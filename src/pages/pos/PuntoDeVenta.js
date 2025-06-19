@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from 'react';
-// Se importa el icono 'Eraser' para el nuevo botón de limpiar venta.
-import { Search, ShoppingCart, Trash2, CheckCircle, XCircle, Eraser } from 'lucide-react';
+import { Search, ShoppingCart, Trash2, CheckCircle, XCircle } from 'lucide-react';
 import { Card, Button, Modal } from '../../components/ui/ComponentesUI';
 
 const PuntoDeVenta = ({ productos, metodosDePago, onVentaCompleta }) => {
@@ -10,9 +9,6 @@ const PuntoDeVenta = ({ productos, metodosDePago, onVentaCompleta }) => {
     const [efectivoRecibido, setEfectivoRecibido] = useState(0);
     const [idMetodoPago, setIdMetodoPago] = useState(metodosDePago[0]?.id || '');
 
-    // --- LÓGICA DE PRODUCTOS A MOSTRAR ---
-    // Si no hay búsqueda, muestra los primeros 5 productos como "Top Ventas" (simulado).
-    // Cuando el backend pueda proveer un ranking real, esta lógica se puede reemplazar fácilmente.
     const productosEnPantalla = useMemo(() => {
         if (terminoBusqueda) {
             return productos.filter(p => 
@@ -20,7 +16,8 @@ const PuntoDeVenta = ({ productos, metodosDePago, onVentaCompleta }) => {
                 p.sku.toLowerCase().includes(terminoBusqueda.toLowerCase())
             );
         }
-        return productos.slice(0, 5); // Simulación de "Top 5 Más Vendidos"
+        // CAMBIO AQUÍ: Se ajusta para mostrar solo 5 productos como pediste.
+        return productos.slice(0, 5);
     }, [productos, terminoBusqueda]);
 
     const agregarACarrito = (producto) => {
@@ -31,8 +28,6 @@ const PuntoDeVenta = ({ productos, metodosDePago, onVentaCompleta }) => {
         setCarrito(carritoActual => {
             const itemExistente = carritoActual.find(item => item.id === producto.id);
             if (itemExistente) {
-                // Si ya existe, simplemente enfoca al usuario en modificar la cantidad.
-                // Opcional: podríamos aumentar en 1, pero la nueva lógica favorece la edición manual.
                 if (itemExistente.quantity >= producto.stock) {
                     alert('No puedes agregar más unidades.');
                     return carritoActual;
@@ -43,12 +38,10 @@ const PuntoDeVenta = ({ productos, metodosDePago, onVentaCompleta }) => {
         });
     };
 
-    // --- FUNCIÓN NUEVA: Permite modificar la cantidad tipeando en un input ---
     const actualizarCantidadManualmente = (productoId, cantidad) => {
         const nuevaCantidad = parseInt(cantidad, 10);
 
         setCarrito(carritoActual => {
-            // Si el input está vacío o no es un número, no hacemos nada aún
             if (isNaN(nuevaCantidad)) {
                 return carritoActual.map(item => item.id === productoId ? { ...item, quantity: '' } : item);
             }
@@ -56,13 +49,11 @@ const PuntoDeVenta = ({ productos, metodosDePago, onVentaCompleta }) => {
             const itemAjustar = carritoActual.find(item => item.id === productoId);
             
             if (nuevaCantidad <= 0) {
-                // Si la cantidad es 0 o menos, se elimina
                 return carritoActual.filter(item => item.id !== productoId);
             }
 
             if (nuevaCantidad > itemAjustar.stock) {
                 alert(`Stock máximo (${itemAjustar.stock}) alcanzado para "${itemAjustar.name}".`);
-                // Se establece la cantidad al máximo stock disponible
                 return carritoActual.map(item => item.id === productoId ? { ...item, quantity: itemAjustar.stock } : item);
             }
             
@@ -77,7 +68,6 @@ const PuntoDeVenta = ({ productos, metodosDePago, onVentaCompleta }) => {
         }
     };
     
-    // ... (resto de funciones sin cambios significativos) ...
     const procesarPago = () => {
         if (carrito.length === 0) { alert("El carrito está vacío."); return; }
         if (!idMetodoPago) { alert("Por favor, selecciona un método de pago."); return; }
@@ -87,6 +77,7 @@ const PuntoDeVenta = ({ productos, metodosDePago, onVentaCompleta }) => {
         setModalPagoAbierto(false); 
         setEfectivoRecibido(0);
     };
+    
     const subtotal = carrito.reduce((sum, item) => sum + item.price * (item.quantity || 0), 0);
     const metodoSeleccionado = metodosDePago.find(pm => pm.id === parseInt(idMetodoPago));
     const porcentajeAjuste = metodoSeleccionado ? parseFloat(metodoSeleccionado.adjustment_percentage) : 0;
@@ -100,7 +91,6 @@ const PuntoDeVenta = ({ productos, metodosDePago, onVentaCompleta }) => {
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20}/>
                     <input type="text" placeholder="Buscar producto por nombre o SKU..." className="w-full pl-10 pr-4 py-3 border rounded-lg text-lg" value={terminoBusqueda} onChange={(e) => setTerminoBusqueda(e.target.value)} />
                 </div>
-                {/* --- CAMBIO: La vista de productos ahora es una LISTA --- */}
                 <h3 className="font-semibold text-gray-600 px-2 mb-2">{terminoBusqueda ? 'Resultados de Búsqueda' : 'Productos Frecuentes'}</h3>
                 <div className="flex-grow overflow-y-auto pr-2">
                     {productosEnPantalla.map(producto => (
@@ -119,7 +109,7 @@ const PuntoDeVenta = ({ productos, metodosDePago, onVentaCompleta }) => {
                     <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2"><ShoppingCart size={24}/> Venta Actual</h2>
                     <Button onClick={limpiarVenta} variant="ghost" size="icon" className="text-gray-500 hover:text-red-600"><XCircle size={22} /></Button>
                 </div>
-                <div className="flex-grow overflow-y-auto border-t border-b py-2 space-y-2">
+                <div className="flex-grow overflow-y-auto border-t border-b py-2 space-y-2 min-h-0">
                     {carrito.length === 0 ? 
                         <p className="text-gray-500 text-center py-10">El carrito está vacío</p> : 
                         carrito.map(item => 
@@ -129,7 +119,6 @@ const PuntoDeVenta = ({ productos, metodosDePago, onVentaCompleta }) => {
                                     <p className="text-sm text-gray-600">${item.price.toFixed(2)}</p>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    {/* --- CAMBIO: Input para editar la cantidad manualmente --- */}
                                     <input 
                                         type="number" 
                                         value={item.quantity} 
@@ -155,11 +144,35 @@ const PuntoDeVenta = ({ productos, metodosDePago, onVentaCompleta }) => {
                 </div>
             </Card>
             <Modal isOpen={modalPagoAbierto} onClose={() => setModalPagoAbierto(false)} title="Procesar Pago">
-                {/* ... (Contenido del modal de pago sin cambios) ... */}
+                <div className="space-y-4">
+                    <div className="text-right text-lg">Subtotal: ${subtotal.toFixed(2)}</div>
+                    <div>
+                        <label className="font-semibold text-gray-700">Método de Pago</label>
+                        <select value={idMetodoPago} onChange={(e) => setIdMetodoPago(e.target.value)} className="w-full mt-1 p-2 border rounded-lg">
+                            {metodosDePago.map(pm => <option key={pm.id} value={pm.id}>{pm.name} ({pm.adjustment_percentage}%)</option>)}
+                        </select>
+                    </div>
+                    {porcentajeAjuste !== 0 && (
+                        <div className={`text-right text-lg ${porcentajeAjuste < 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            Ajuste: {porcentajeAjuste > 0 ? '+' : ''}{porcentajeAjuste.toFixed(2)}%
+                        </div>
+                    )}
+                    <div className="text-center text-4xl font-bold text-indigo-600 mb-4">${totalFinal.toFixed(2)}</div>
+                    {metodoSeleccionado?.name === 'Efectivo' && (
+                        <div>
+                            <label className="font-semibold text-gray-700">Efectivo Recibido</label>
+                            <input type="number" value={efectivoRecibido || ''} onChange={(e) => setEfectivoRecibido(parseFloat(e.target.value) || 0)} className="w-full mt-1 p-2 border rounded-lg" placeholder="0.00" />
+                            {efectivoRecibido > totalFinal && <p className="text-lg font-semibold mt-2 text-green-600">Vuelto: ${vuelto.toFixed(2)}</p>}
+                        </div>
+                    )}
+                    <div className="flex justify-end gap-3 pt-4">
+                        <Button onClick={() => setModalPagoAbierto(false)} variant="secondary">Cancelar</Button>
+                        <Button onClick={procesarPago} variant="success">Finalizar Venta</Button>
+                    </div>
+                </div>
             </Modal>
         </div>
     );
 };
 
 export default PuntoDeVenta;
-
