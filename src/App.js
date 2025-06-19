@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext, useCallback } from 'react';
-import { ShoppingCart, DollarSign, Package, Truck, BarChart2, UserPlus, LogOut, Archive, UploadCloud, CreditCard, Users } from 'lucide-react';
+import { ShoppingCart, DollarSign, Package, Truck, BarChart2, UserPlus, LogOut, Archive, UploadCloud, CreditCard, Users, ShieldCheck } from 'lucide-react';
 import { ContextoAuth } from './context/AuthContext';
 import { Button } from './components/ui/ComponentesUI';
 
@@ -21,8 +21,17 @@ const API_URL = 'http://127.0.0.1:8000/api';
 export default function App() {
     const { usuario, tokensAuth, cerrarSesion } = useContext(ContextoAuth);
 
+    // Definición de roles
+    const esSuperAdmin = usuario?.groups?.includes('SuperAdmin');
+    const esAdmin = usuario?.groups?.includes('Admin');
+    const esVendedor = usuario?.groups?.includes('Vendedor');
+
+    const esAdminOSuperAdmin = esAdmin || esSuperAdmin;
+    const puedeVerPanel = esSuperAdmin || esAdmin || esVendedor;
+
+    // Estados
     const [vista, setVista] = useState('pos');
-    const [vistaAdmin, setVistaAdmin] = useState('dashboard');
+    const [vistaPanel, setVistaPanel] = useState('dashboard');
     const [productos, setProductos] = useState([]);
     const [ventas, setVentas] = useState([]);
     const [proveedores, setProveedores] = useState([]);
@@ -32,54 +41,80 @@ export default function App() {
     const [grupos, setGrupos] = useState([]);
     const [metodosDePago, setMetodosDePago] = useState([]);
     const [metodosDePagoAdmin, setMetodosDePagoAdmin] = useState([]);
+    const [dashboardData, setDashboardData] = useState(null); // <-- NUEVO ESTADO
     
-    // Este estado solo se usará para la carga INICIAL de la aplicación.
     const [cargando, setCargando] = useState(true);
     const [error, setError] = useState(null);
-
-    const esAdmin = usuario?.groups?.includes('Administradores');
 
     const obtenerDatos = useCallback(async () => {
         if (!tokensAuth) return;
         
-        // ¡CAMBIO CLAVE! Se elimina `setCargando(true)` de aquí.
-        // Esto evita que la pantalla de carga principal se muestre en cada refresco de datos.
-        
-        let endpoints = ['products', 'sales', 'payment-methods'];
-        if (esAdmin) {
-            endpoints.push('providers', 'clients', 'categories', 'users', 'groups', 'admin/payment-methods');
+        let endpoints = ['products', 'payment-methods'];
+
+        // --- INICIO DE CORRECCIÓN ---
+        // Se añade la petición para los datos del dashboard si el usuario puede ver el panel.
+        if (puedeVerPanel) {
+            endpoints.push('reports/dashboard');
         }
+
+        if (esAdminOSuperAdmin) {
+            endpoints.push('sales', 'providers', 'clients', 'categories', 'admin/payment-methods');
+        }
+        
+        if (esSuperAdmin) {
+            endpoints.push('users', 'groups');
+        }
+        // --- FIN DE CORRECCIÓN ---
+
         try {
             const requests = endpoints.map(endpoint => 
                 fetch(`${API_URL}/${endpoint}/`, { headers: { 'Authorization': 'Bearer ' + String(tokensAuth.access) } }).then(res => {
-                    if(res.status === 401) { cerrarSesion(); return Promise.reject(new Error("Token inválido")); }
-                    if (!res.ok) return Promise.resolve([]);
-                    return res.json()
+                    if (res.status === 401) {
+                        cerrarSesion();
+                        return Promise.reject(new Error("Token inválido"));
+                    }
+                    if (!res.ok) {
+                        console.error(`Error al obtener ${endpoint}: ${res.status}`);
+                        return Promise.resolve(null);
+                    }
+                    return res.json();
                 })
             );
             
             const data = await Promise.all(requests);
             const dataMap = Object.fromEntries(endpoints.map((e, i) => [e, data[i]]));
 
-            setProductos(dataMap.products || []); 
-            setVentas(dataMap.sales || []);
+            setProductos(dataMap.products || []);
             setMetodosDePago(dataMap['payment-methods'] || []);
-            if(esAdmin) {
-                setProveedores(dataMap.providers || []); 
-                setClientes(dataMap.clients || []); 
-                setCategorias(dataMap.categories || []); 
+            
+            // --- INICIO DE CORRECCIÓN ---
+            // Se guardan los datos del dashboard en el nuevo estado.
+            if (puedeVerPanel) {
+                setDashboardData(dataMap['reports/dashboard'] || null);
+            }
+            
+            if (esAdminOSuperAdmin) {
+                setVentas(dataMap.sales || []);
+                setProveedores(dataMap.providers || []);
+                setClientes(dataMap.clients || []);
+                setCategorias(dataMap.categories || []);
+                setMetodosDePagoAdmin(dataMap['admin/payment-methods'] || []);
+            } else {
+                setVentas([]);
+            }
+
+            if (esSuperAdmin) {
                 setTodosLosUsuarios(dataMap.users || []);
                 setGrupos(dataMap.groups || []);
-                setMetodosDePagoAdmin(dataMap['admin/payment-methods'] || []);
             }
+            // --- FIN DE CORRECCIÓN ---
             setError(null);
         } catch (err) {
             if (err.message !== "Token inválido") { setError("No se pudo conectar con el servidor."); }
         } finally { 
-            // La carga solo se desactiva, nunca se reactiva en los refrescos.
-            setCargando(false); 
+            setCargando(false);
         }
-    }, [tokensAuth, cerrarSesion, esAdmin]); 
+    }, [tokensAuth, cerrarSesion, esSuperAdmin, esAdminOSuperAdmin, puedeVerPanel]);
 
     useEffect(() => {
         if (usuario && tokensAuth) {
@@ -90,10 +125,11 @@ export default function App() {
     }, [usuario, tokensAuth, obtenerDatos]);
     
     useEffect(() => { 
-        if (usuario && !esAdmin) {
-            setVista('pos'); 
+        if (usuario) {
+            setVista('pos');
+            setVistaPanel('dashboard');
         }
-    }, [usuario, esAdmin]);
+    }, [usuario]);
 
     if (!usuario) {
         return <PaginaLogin />;
@@ -102,25 +138,32 @@ export default function App() {
     const handleVentaCompleta = async (carrito, total, idMetodoPago) => {
         const datosVenta = { total_amount: total.toFixed(2), details: carrito.map(item => ({ product_id: item.id, quantity: item.quantity, unit_price: item.price.toFixed(2) })), payment_method_id: idMetodoPago };
         try {
-            await fetch(`${API_URL}/sales/`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + String(tokensAuth.access) }, body: JSON.stringify(datosVenta) });
+            const response = await fetch(`${API_URL}/sales/`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + String(tokensAuth.access) }, body: JSON.stringify(datosVenta) });
+            if (!response.ok) throw new Error('Error al registrar la venta.');
             alert('Venta registrada.'); 
             obtenerDatos();
         } catch (err) { alert(`Error: ${err.message}`); }
     };
     
-    const renderizarVistaAdmin = () => {
-        switch (vistaAdmin) {
-            case 'dashboard': return <DashboardAdmin productos={productos} ventas={ventas} />;
-            case 'products': return <GestionProductos productos={productos} proveedores={proveedores} categorias={categorias} obtenerDatos={obtenerDatos} />;
-            case 'sales': return <GestionVentas ventas={ventas} obtenerDatos={obtenerDatos}/>;
-            case 'providers': return <GestionProveedores proveedores={proveedores} obtenerDatos={obtenerDatos} />;
-            case 'clients': return <GestionClientes clientes={clientes} obtenerDatos={obtenerDatos} />;
-            case 'reports': return <ReportesYEstadisticas />;
-            case 'users': return <GestionUsuarios usuarios={todosLosUsuarios} grupos={grupos} obtenerDatos={obtenerDatos} />;
-            case 'cash-count': return <CierreCaja />;
-            case 'bulk-price-update': return <ActualizacionMasivaPrecios productos={productos} proveedores={proveedores} obtenerDatos={obtenerDatos} />;
-            case 'payment-methods': return <GestionMetodosDePago metodosDePago={metodosDePagoAdmin} obtenerDatos={obtenerDatos} />;
-            default: return <DashboardAdmin productos={productos} ventas={ventas}/>;
+    const renderizarVistaPanel = () => {
+        const roles = { esSuperAdmin, esAdmin, esVendedor };
+
+        switch (vistaPanel) {
+            // --- INICIO DE CORRECCIÓN ---
+            // Ahora se pasa el objeto `dashboardData` completo.
+            // Se renderiza solo si `dashboardData` no es null.
+            case 'dashboard': return dashboardData ? <DashboardAdmin dashboardData={dashboardData} /> : <div>Cargando datos del dashboard...</div>;
+            // --- FIN DE CORRECCIÓN ---
+            case 'products': return <GestionProductos productos={productos} proveedores={proveedores} categorias={categorias} obtenerDatos={obtenerDatos} roles={roles} />;
+            case 'sales': return esAdminOSuperAdmin && <GestionVentas ventas={ventas} obtenerDatos={obtenerDatos} />;
+            case 'providers': return esAdminOSuperAdmin && <GestionProveedores proveedores={proveedores} obtenerDatos={obtenerDatos} />;
+            case 'clients': return esAdminOSuperAdmin && <GestionClientes clientes={clientes} obtenerDatos={obtenerDatos} />;
+            case 'reports': return esAdminOSuperAdmin && <ReportesYEstadisticas />;
+            case 'cash-count': return esAdminOSuperAdmin && <CierreCaja />;
+            case 'bulk-price-update': return esAdminOSuperAdmin && <ActualizacionMasivaPrecios productos={productos} proveedores={proveedores} obtenerDatos={obtenerDatos} />;
+            case 'payment-methods': return esAdminOSuperAdmin && <GestionMetodosDePago metodosDePago={metodosDePagoAdmin} obtenerDatos={obtenerDatos} />;
+            case 'users': return esSuperAdmin && <GestionUsuarios usuarios={todosLosUsuarios} grupos={grupos} obtenerDatos={obtenerDatos} />;
+            default: return dashboardData ? <DashboardAdmin dashboardData={dashboardData} /> : <div>Cargando datos del dashboard...</div>;
         }
     };
 
@@ -131,30 +174,54 @@ export default function App() {
 
     return (
         <div className="flex h-screen bg-gray-100 font-sans">
-            {esAdmin && vista === 'admin' && (
+            {puedeVerPanel && vista === 'panel' && (
                 <aside className="w-64 bg-white shadow-xl flex flex-col p-4">
                     <h1 className="text-2xl font-bold text-indigo-600 px-4 mb-6">MiNegocio<span className="font-light">PRO</span></h1>
-                    <nav className="flex-grow"><ul className="space-y-2">
-                        <NavItem icon={BarChart2} active={vistaAdmin === 'dashboard'} onClick={() => setVistaAdmin('dashboard')}>Dashboard</NavItem>
-                        <NavItem icon={Package} active={vistaAdmin === 'products'} onClick={() => setVistaAdmin('products')}>Productos</NavItem>
-                        <NavItem icon={UploadCloud} active={vistaAdmin === 'bulk-price-update'} onClick={() => setVistaAdmin('bulk-price-update')}>Actualizar Precios</NavItem>
-                        <NavItem icon={DollarSign} active={vistaAdmin === 'sales'} onClick={() => setVistaAdmin('sales')}>Ventas</NavItem>
-                        <NavItem icon={Archive} active={vistaAdmin === 'cash-count'} onClick={() => setVistaAdmin('cash-count')}>Cierre de Caja</NavItem>
-                        <NavItem icon={CreditCard} active={vistaAdmin === 'payment-methods'} onClick={() => setVistaAdmin('payment-methods')}>Métodos de Pago</NavItem>
-                        <NavItem icon={Truck} active={vistaAdmin === 'providers'} onClick={() => setVistaAdmin('providers')}>Proveedores</NavItem>
-                        <NavItem icon={Users} active={vistaAdmin === 'clients'} onClick={() => setVistaAdmin('clients')}>Clientes</NavItem>
-                        <NavItem icon={BarChart2} active={vistaAdmin === 'reports'} onClick={() => setVistaAdmin('reports')}>Reportes</NavItem>
-                        <NavItem icon={UserPlus} active={vistaAdmin === 'users'} onClick={() => setVistaAdmin('users')}>Usuarios</NavItem>
-                    </ul></nav>
-                    <div className="mt-auto"><NavItem icon={ShoppingCart} onClick={() => setVista('pos')}>Ir al Punto de Venta</NavItem></div>
+                    <nav className="flex-grow">
+                        <ul className="space-y-2">
+                            <NavItem icon={BarChart2} active={vistaPanel === 'dashboard'} onClick={() => setVistaPanel('dashboard')}>Dashboard</NavItem>
+                            <NavItem icon={Package} active={vistaPanel === 'products'} onClick={() => setVistaPanel('products')}>Productos</NavItem>
+                            
+                            {esAdminOSuperAdmin && (
+                                <>
+                                    <NavItem icon={UploadCloud} active={vistaPanel === 'bulk-price-update'} onClick={() => setVistaPanel('bulk-price-update')}>Actualizar Precios</NavItem>
+                                    <NavItem icon={DollarSign} active={vistaPanel === 'sales'} onClick={() => setVistaPanel('sales')}>Ventas</NavItem>
+                                    <NavItem icon={Archive} active={vistaPanel === 'cash-count'} onClick={() => setVistaPanel('cash-count')}>Cierre de Caja</NavItem>
+                                    <NavItem icon={CreditCard} active={vistaPanel === 'payment-methods'} onClick={() => setVistaPanel('payment-methods')}>Métodos de Pago</NavItem>
+                                    <NavItem icon={Truck} active={vistaPanel === 'providers'} onClick={() => setVistaPanel('providers')}>Proveedores</NavItem>
+                                    <NavItem icon={Users} active={vistaPanel === 'clients'} onClick={() => setVistaPanel('clients')}>Clientes</NavItem>
+                                    <NavItem icon={ShieldCheck} active={vistaPanel === 'reports'} onClick={() => setVistaPanel('reports')}>Reportes</NavItem>
+                                </>
+                            )}
+
+                            {esSuperAdmin && (
+                                <NavItem icon={UserPlus} active={vistaPanel === 'users'} onClick={() => setVistaPanel('users')}>Usuarios</NavItem>
+                            )}
+                        </ul>
+                    </nav>
+                    <div className="mt-auto">
+                        <NavItem icon={ShoppingCart} onClick={() => setVista('pos')}>Ir al Punto de Venta</NavItem>
+                    </div>
                 </aside>
             )}
             <main className="flex-1 flex flex-col">
                 <header className="bg-white shadow-sm p-4 flex justify-between items-center z-10">
-                    <div>{esAdmin && vista === 'pos' && <Button onClick={() => setVista('admin')} variant="secondary">Volver al Panel</Button>}</div>
-                    <div className="flex items-center gap-3"><span className="font-semibold text-gray-700">{usuario.username}</span><button onClick={cerrarSesion} className="text-gray-500 hover:text-red-600"><LogOut size={20} /></button></div>
+                    <div>
+                        {puedeVerPanel && vista === 'pos' && <Button onClick={() => setVista('panel')} variant="secondary">Volver al Panel</Button>}
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <span className="font-semibold text-gray-700">{usuario.username}</span>
+                        <button onClick={cerrarSesion} className="text-gray-500 hover:text-red-600">
+                            <LogOut size={20} />
+                        </button>
+                    </div>
                 </header>
-                <div className="flex-1 p-6 overflow-y-auto">{vista === 'pos' || !esAdmin ? <PuntoDeVenta productos={productos} metodosDePago={metodosDePago} onVentaCompleta={handleVentaCompleta} /> : renderizarVistaAdmin()}</div>
+                <div className="flex-1 p-6 overflow-y-auto">
+                    {vista === 'panel' && puedeVerPanel
+                        ? renderizarVistaPanel()
+                        : <PuntoDeVenta productos={productos} metodosDePago={metodosDePago} onVentaCompleta={handleVentaCompleta} />
+                    }
+                </div>
             </main>
         </div>
     );

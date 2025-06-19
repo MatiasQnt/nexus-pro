@@ -1,5 +1,5 @@
-import React, { useState, useContext, useMemo } from 'react';
-import { PlusCircle, Edit, Trash2 } from 'lucide-react';
+import React, { useState, useContext } from 'react';
+import { PlusCircle, Edit, Trash2, PackagePlus } from 'lucide-react';
 import { ContextoAuth } from '../../context/AuthContext';
 import { Button, Modal, Table } from '../../components/ui/ComponentesUI';
 import { useFiltrosYBusqueda } from '../../hooks/useFiltrosYBusqueda';
@@ -8,13 +8,15 @@ const API_URL = 'http://127.0.0.1:8000/api';
 
 // --- COMPONENTES INTERNOS ---
 
+// Formulario completo para crear/editar (solo para Admin y SuperAdmin)
 const FormularioProducto = ({ producto, onGuardar, onCancelar, categorias, proveedores }) => {
     const [formData, setFormData] = useState({ ...producto, category: producto.category || '', provider: producto.provider || null });
     const handleChange = (e) => { const { name, value } = e.target; setFormData(prev => ({ ...prev, [name]: value })); };
 
     return (
         <form onSubmit={(e) => { e.preventDefault(); onGuardar(formData); }} className="space-y-4">
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* ... (el resto del formulario no cambia) ... */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">Nombre del Producto</label>
                     <input id="name" name="name" value={formData.name} onChange={handleChange} placeholder="Ej: Coca-Cola 1.5L" className="p-2 border rounded-lg w-full" required/>
@@ -62,14 +64,46 @@ const FormularioProducto = ({ producto, onGuardar, onCancelar, categorias, prove
                  <Button type="button" onClick={onCancelar} variant="secondary">Cancelar</Button>
                  <Button type="submit" variant="primary">Guardar</Button>
              </div>
-         </form>
+       </form>
     );
 };
 
-const FiltroBusquedaProducto = ({ setFiltros, filtros }) => {
-    const handleBusquedaChange = (e) => {
-        setFiltros({ ...filtros, busqueda: e.target.value });
+// **NUEVO** Formulario simple solo para añadir stock
+const FormularioStock = ({ onGuardar, onCancelar }) => {
+    const [stockToAdd, setStockToAdd] = useState(1);
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        onGuardar({ stock: stockToAdd });
     };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+                <label htmlFor="stock" className="block text-sm font-medium text-gray-700 mb-1">Cantidad a Añadir</label>
+                <input 
+                    id="stock" 
+                    name="stock" 
+                    type="number" 
+                    value={stockToAdd} 
+                    onChange={(e) => setStockToAdd(e.target.value)} 
+                    placeholder="0" 
+                    className="p-2 border rounded-lg w-full" 
+                    required 
+                    min="1"
+                />
+            </div>
+            <div className="flex justify-end gap-3 pt-4">
+                <Button type="button" onClick={onCancelar} variant="secondary">Cancelar</Button>
+                <Button type="submit" variant="primary">Añadir Stock</Button>
+            </div>
+        </form>
+    );
+};
+
+
+const FiltroBusquedaProducto = ({ setFiltros, filtros }) => {
+    const handleBusquedaChange = (e) => setFiltros({ ...filtros, busqueda: e.target.value });
 
     return (
         <div className="mb-4">
@@ -86,9 +120,7 @@ const FiltroBusquedaProducto = ({ setFiltros, filtros }) => {
 
 const logicaFiltroProductos = (productos, filtros) => {
     const { busqueda } = filtros;
-    if (!busqueda) {
-        return productos;
-    }
+    if (!busqueda) return productos;
     const terminoBusquedaLower = busqueda.toLowerCase();
     return productos.filter(p => 
         p.name.toLowerCase().includes(terminoBusquedaLower) ||
@@ -100,10 +132,15 @@ const logicaFiltroProductos = (productos, filtros) => {
 
 // --- COMPONENTE PRINCIPAL ---
 
-const GestionProductos = ({ productos, proveedores, categorias, obtenerDatos }) => {
+const GestionProductos = ({ productos, proveedores, categorias, obtenerDatos, roles }) => {
     const [modalAbierto, setModalAbierto] = useState(false);
-    const [productoEditando, setProductoEditando] = useState(null);
+    const [stockModalAbierto, setStockModalAbierto] = useState(false); // Estado para el nuevo modal
+    const [productoSeleccionado, setProductoSeleccionado] = useState(null);
+    
     const { tokensAuth } = useContext(ContextoAuth);
+
+    // Derivamos los permisos desde la prop 'roles'
+    const puedeGestionar = roles?.esAdmin || roles?.esSuperAdmin;
 
     const { datosPaginados, FiltrosUI, PaginacionUI } = useFiltrosYBusqueda({
         items: productos,
@@ -113,21 +150,26 @@ const GestionProductos = ({ productos, proveedores, categorias, obtenerDatos }) 
         filtrosIniciales: { busqueda: '' }
     });
 
-
     const abrirModalNuevo = () => { 
-        setProductoEditando({ name: '', sku: '', description: '', cost_price: '', sale_price: '', stock: '', category: '', provider: null }); 
+        setProductoSeleccionado({ name: '', sku: '', description: '', cost_price: '', sale_price: '', stock: '', category: '', provider: null }); 
         setModalAbierto(true); 
     };
     
     const abrirModalEditar = (producto) => { 
-        setProductoEditando({ ...producto, provider: producto.provider || null }); 
+        setProductoSeleccionado({ ...producto, provider: producto.provider || null }); 
         setModalAbierto(true); 
+    };
+
+    const abrirModalStock = (producto) => {
+        setProductoSeleccionado(producto);
+        setStockModalAbierto(true);
     };
 
     const guardarProducto = async (datosProducto) => {
         const esEditando = !!datosProducto.id;
         const url = esEditando ? `${API_URL}/products/${datosProducto.id}/` : `${API_URL}/products/`;
         const method = esEditando ? 'PUT' : 'POST';
+        
         const payload = { ...datosProducto };
         delete payload.provider_name;
         delete payload.category_name;
@@ -142,8 +184,27 @@ const GestionProductos = ({ productos, proveedores, categorias, obtenerDatos }) 
         } catch (err) { alert(`Error: ${err.message}`); }
     };
 
+    const guardarStock = async (datosStock) => {
+        if (!productoSeleccionado) return;
+        const url = `${API_URL}/products/${productoSeleccionado.id}/update-stock/`;
+        try {
+            const response = await fetch(url, { 
+                method: 'PATCH', 
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + String(tokensAuth.access) }, 
+                body: JSON.stringify({ stock: datosStock.stock }) 
+            });
+            if (!response.ok) { const errorData = await response.json(); throw new Error(JSON.stringify(errorData)); }
+            alert(`Stock añadido.`);
+            setStockModalAbierto(false);
+            obtenerDatos();
+        } catch (err) {
+            alert(`Error: ${err.message}`);
+        }
+    };
+
     const borrarProducto = async (idProducto) => {
-        if (window.confirm("¿Estás seguro?")) {
+        // Considera usar un modal de confirmación en lugar de window.confirm
+        if (window.confirm("¿Estás seguro de que quieres eliminar este producto?")) {
             try {
                 await fetch(`${API_URL}/products/${idProducto}/`, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + String(tokensAuth.access) }});
                 alert('Producto eliminado.'); 
@@ -156,20 +217,21 @@ const GestionProductos = ({ productos, proveedores, categorias, obtenerDatos }) 
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <h1 className="text-3xl font-bold text-gray-800">Gestión de Productos</h1>
-                <Button onClick={abrirModalNuevo} icon={PlusCircle}>Nuevo Producto</Button>
+                {/* El botón de "Nuevo Producto" solo es visible para Admin/SuperAdmin */}
+                {puedeGestionar && (
+                    <Button onClick={abrirModalNuevo} icon={PlusCircle}>Nuevo Producto</Button>
+                )}
             </div>
             
             {FiltrosUI}
 
             <Table 
-                // --- CAMBIO AQUÍ: Añadimos 'Precio Costo' al header ---
                 headers={['SKU', 'Nombre', 'Precio Costo', 'Precio Venta', 'Stock', 'Categoría', 'Acciones']} 
                 data={datosPaginados} 
                 renderRow={(p) => (
                     <tr key={p.id} className="bg-white border-b hover:bg-gray-50">
                         <td className="px-6 py-4">{p.sku}</td>
-                        <td className="px-6 py-4">{p.name}</td>
-                        {/* --- CAMBIO AQUÍ: Añadimos la celda para el precio de costo --- */}
+                        <td className="px-6 py-4 font-medium text-gray-900">{p.name}</td>
                         <td className="px-6 py-4">${parseFloat(p.cost_price).toFixed(2)}</td>
                         <td className="px-6 py-4">${parseFloat(p.sale_price).toFixed(2)}</td>
                         <td className="px-6 py-4">
@@ -179,8 +241,16 @@ const GestionProductos = ({ productos, proveedores, categorias, obtenerDatos }) 
                         </td>
                         <td className="px-6 py-4">{p.category_name}</td>
                         <td className="px-6 py-4 flex gap-2">
-                            <Button onClick={() => abrirModalEditar(p)} variant="secondary" icon={Edit} />
-                            <Button onClick={() => borrarProducto(p.id)} variant="danger" icon={Trash2} />
+                            {/* Botón para añadir stock, visible para todos */}
+                            <Button onClick={() => abrirModalStock(p)} variant="outline" size="sm" icon={PackagePlus}>Stock</Button>
+                            
+                            {/* Botones de gestión, solo para Admin/SuperAdmin */}
+                            {puedeGestionar && (
+                                <>
+                                    <Button onClick={() => abrirModalEditar(p)} variant="secondary" size="sm" icon={Edit} />
+                                    <Button onClick={() => borrarProducto(p.id)} variant="danger" size="sm" icon={Trash2} />
+                                </>
+                            )}
                         </td>
                     </tr>
                 )}
@@ -188,9 +258,18 @@ const GestionProductos = ({ productos, proveedores, categorias, obtenerDatos }) 
 
             {PaginacionUI}
 
-            <Modal isOpen={modalAbierto} onClose={() => setModalAbierto(false)} title={productoEditando?.id ? 'Editar Producto' : 'Nuevo Producto'}>
-                {productoEditando && <FormularioProducto producto={productoEditando} onGuardar={guardarProducto} onCancelar={() => setModalAbierto(false)} categorias={categorias} proveedores={proveedores}/>}
+            {/* Modal para Crear/Editar Producto */}
+            {puedeGestionar && (
+                <Modal isOpen={modalAbierto} onClose={() => setModalAbierto(false)} title={productoSeleccionado?.id ? 'Editar Producto' : 'Nuevo Producto'}>
+                    {productoSeleccionado && <FormularioProducto producto={productoSeleccionado} onGuardar={guardarProducto} onCancelar={() => setModalAbierto(false)} categorias={categorias} proveedores={proveedores}/>}
+                </Modal>
+            )}
+
+            {/* Modal para Añadir Stock */}
+            <Modal isOpen={stockModalAbierto} onClose={() => setStockModalAbierto(false)} title={`Añadir Stock a: ${productoSeleccionado?.name}`}>
+                {productoSeleccionado && <FormularioStock onGuardar={guardarStock} onCancelar={() => setStockModalAbierto(false)} />}
             </Modal>
+
         </div>
     );
 };
