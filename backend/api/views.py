@@ -22,15 +22,14 @@ from .models import (
     CashCount,
 )
 from .serializers import (
-    ProductSerializer, CategorySerializer, ProviderSerializer, ClientSerializer, 
-    SaleReadSerializer, SaleWriteSerializer, MyTokenObtainPairSerializer, 
+    ProductSerializer, CategorySerializer, ProviderSerializer, ClientSerializer,
+    SaleReadSerializer, SaleWriteSerializer, MyTokenObtainPairSerializer,
     UserSerializer, GroupSerializer, PaymentMethodSerializer, CashCountSerializer
 )
 from .permissions import (
-    IsSuperAdminUser, IsAdminUser, IsVendedorUser, 
+    IsSuperAdminUser, IsAdminUser, IsVendedorUser,
     IsSuperAdminOrAdmin, CanViewPanel, CanCreateSales
 )
-
 
 class MyTokenObtainPairView(TokenObtainPairView):
     serializer_class = MyTokenObtainPairSerializer
@@ -61,7 +60,6 @@ class ProductViewSet(viewsets.ModelViewSet):
         except (ValueError, TypeError):
             return Response({'error': 'El stock debe ser un número entero válido.'}, status=status.HTTP_400_BAD_REQUEST)
 
-
 class CategoryViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsSuperAdminOrAdmin]
     queryset = Category.objects.all().order_by('name')
@@ -82,6 +80,18 @@ class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all().order_by('username')
     serializer_class = UserSerializer
 
+    @action(detail=True, methods=['post'], url_path='set-password')
+    def set_password(self, request, pk=None):
+        user = self.get_object()
+        password = request.data.get('password')
+        if not password:
+            return Response({'error': 'La contraseña no puede estar vacía.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.set_password(password)
+        user.save()
+
+        return Response({'status': 'Contraseña actualizada con éxito'}, status=status.HTTP_200_OK)
+
 class GroupViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsSuperAdminUser]
     queryset = Group.objects.all().order_by('name')
@@ -89,10 +99,10 @@ class GroupViewSet(viewsets.ModelViewSet):
 
 class SaleViewSet(viewsets.ModelViewSet):
     queryset = Sale.objects.all().order_by('-date_time')
-    
+
     def get_serializer_class(self):
         return SaleWriteSerializer if self.action == 'create' else SaleReadSerializer
-    
+
     def get_permissions(self):
         if self.action == 'create':
             self.permission_classes = [IsAuthenticated, CanCreateSales]
@@ -118,7 +128,7 @@ class SaleViewSet(viewsets.ModelViewSet):
                     SaleDetail.objects.create(sale=sale, product=product, quantity=detail['quantity'], unit_price=detail['unit_price'])
         except (serializers.ValidationError, Product.DoesNotExist, PaymentMethod.DoesNotExist) as e:
             return Response(str(e), status=status.HTTP_400_BAD_REQUEST)
-        
+
         sale.refresh_from_db()
         read_serializer = SaleReadSerializer(sale, context={'request': request})
         return Response(read_serializer.data, status=status.HTTP_201_CREATED)
@@ -141,7 +151,7 @@ def cancel_sale_view(request, pk):
         sale = Sale.objects.get(pk=pk)
     except Sale.DoesNotExist:
         return Response({'detail': 'Venta no encontrada.'}, status=status.HTTP_404_NOT_FOUND)
-    
+
     if sale.status == 'Cancelada':
         return Response({'detail': 'Esta venta ya ha sido cancelada.'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -152,7 +162,7 @@ def cancel_sale_view(request, pk):
         product = detail.product
         product.stock += detail.quantity
         product.save()
-        
+
     return Response({'detail': 'Venta cancelada y stock restaurado con éxito.'}, status=status.HTTP_200_OK)
 
 
@@ -179,7 +189,7 @@ class AdminPaymentMethodViewSet(viewsets.ModelViewSet):
 
 class DashboardReportsView(APIView):
     permission_classes = [IsAuthenticated, CanViewPanel]
-    
+
     def get(self, request, *args, **kwargs):
         today = timezone.localdate()
         last_30_days_start = today - timedelta(days=29)
@@ -189,17 +199,17 @@ class DashboardReportsView(APIView):
         gross_profit_today = SaleDetail.objects.filter(sale__in=today_sales_qs).annotate(
             profit_per_item=F('unit_price') - F('product__cost_price')
         ).aggregate(total_profit=Sum(F('quantity') * F('profit_per_item')))['total_profit'] or 0
-        
+
         kpis = {
             'ventas_del_dia': total_sales_today,
             'ganancia_bruta_del_dia': gross_profit_today,
             'ticket_promedio': total_sales_today / today_sales_qs.count() if today_sales_qs.count() > 0 else 0,
             'productos_vendidos': SaleDetail.objects.filter(sale__in=today_sales_qs).aggregate(total_quantity=Sum('quantity'))['total_quantity'] or 0
         }
-        
+
         low_stock_limit = 5
         low_stock_products_query = Product.objects.filter(stock__lte=low_stock_limit, stock__gt=0).order_by('stock').values('id', 'name', 'stock')[:10]
-        
+
         sales_by_payment_method = Sale.objects.filter(date_time__date__gte=last_30_days_start, status='Completada').values('payment_method__name').annotate(total=Sum('final_amount')).order_by('-total')
         daily_sales = Sale.objects.filter(date_time__date__gte=last_30_days_start, status='Completada').annotate(day=TruncDay('date_time')).values('day').annotate(total_sales=Sum('final_amount')).order_by('day')
         monthly_sales = Sale.objects.filter(date_time__date__gte=today - timedelta(days=365), status='Completada').annotate(month=TruncMonth('date_time')).values('month').annotate(total_sales=Sum('final_amount')).order_by('month')
@@ -207,7 +217,7 @@ class DashboardReportsView(APIView):
         sales_by_hour_dict = {item['hour']: item['total'] for item in peak_hours_query}
         peak_hours_data = [{'name': f"{h:02d}h", 'Ventas': sales_by_hour_dict.get(h, 0)} for h in range(24)]
         sales_by_category_query = SaleDetail.objects.filter(sale__status='Completada', sale__date_time__date__gte=last_30_days_start).values('product__category__name').annotate(value=Sum(F('quantity') * F('unit_price'))).order_by('-value')
-        
+
         chart_data = {
             'ventas_por_metodo_pago': [{'name': item['payment_method__name'] or 'No especificado', 'value': item['total']} for item in sales_by_payment_method],
             'ventas_diarias': [{'name': item['day'].strftime('%d/%m'), 'Ventas': item['total_sales']} for item in daily_sales],
@@ -222,7 +232,7 @@ class DashboardReportsView(APIView):
             'mas_vendidos': list(most_sold_products_query),
             'mas_rentables': list(most_profitable_products_query)
         }
-        
+
         dormant_period_days = 60
         dormant_since = today - timedelta(days=dormant_period_days)
         sold_product_ids = SaleDetail.objects.filter(sale__status='Completada', sale__date_time__date__gte=dormant_since).values_list('product_id', flat=True).distinct()
@@ -230,7 +240,7 @@ class DashboardReportsView(APIView):
         other_reports = {
             'productos_dormidos': list(dormant_products_query)
         }
-        
+
         return Response({
             'kpis': kpis,
             'charts': chart_data,
@@ -239,15 +249,14 @@ class DashboardReportsView(APIView):
             'low_stock_products': list(low_stock_products_query)
         })
 
-
 class ReportsView(APIView):
     permission_classes = [IsAuthenticated, IsSuperAdminOrAdmin]
-    
+
     def get(self,request,*args,**kwargs):
         most_sold=SaleDetail.objects.values('product__name').annotate(c=Sum('quantity')).order_by('-c').first()
         most_profitable=Product.objects.filter(saledetail__isnull=False).annotate(p=F('sale_price')-F('cost_price')).order_by('-p').first()
         peak_hour=Sale.objects.annotate(h=TruncHour('date_time')).values('h').annotate(c=Count('id')).order_by('-c').first()
-        
+
         return Response({
             'most_sold_product': {
                 'name': most_sold['product__name'] if most_sold else 'N/A',
@@ -278,30 +287,28 @@ class DailyCashCountView(APIView):
         today = date.today()
         if CashCount.objects.filter(date=today).exists():
             return Response({'message': 'La caja del día de hoy ya fue cerrada.'}, status=status.HTTP_409_CONFLICT)
-        
+
         counted_str = request.data.get('counted_amount')
         expected_str = request.data.get('expected_amount')
 
-        if counted_str is None or expected_str is None: 
+        if counted_str is None or expected_str is None:
             return Response({'error': 'Faltan datos.'}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         try:
             counted_decimal = Decimal(str(counted_str))
             expected_decimal = Decimal(str(expected_str))
             difference = counted_decimal - expected_decimal
 
             CashCount.objects.create(
-                date=today, 
-                expected_amount=expected_decimal, 
-                counted_amount=counted_decimal, 
-                difference=difference, 
+                date=today,
+                expected_amount=expected_decimal,
+                counted_amount=counted_decimal,
+                difference=difference,
                 user=request.user
             )
             return Response({'message': 'Cierre de caja guardado con éxito.'}, status=status.HTTP_201_CREATED)
         except InvalidOperation:
-             # Este error ocurre si los valores no son números válidos.
              return Response({'error': 'Los montos deben ser números válidos.'}, status=status.HTTP_400_BAD_REQUEST)
-
 
 class BulkPriceUpdateView(APIView):
     permission_classes = [IsAuthenticated, IsSuperAdminOrAdmin]
@@ -309,13 +316,13 @@ class BulkPriceUpdateView(APIView):
     def post(self, request, *args, **kwargs):
         product_ids = request.data.get('product_ids', [])
         percentage_str = request.data.get('percentage')
-        update_target = request.data.get('update_target') 
+        update_target = request.data.get('update_target')
         if not all([product_ids, percentage_str, update_target]):
             return Response({'error': 'Faltan datos requeridos.'}, status=status.HTTP_400_BAD_REQUEST)
         try:
             percentage = Decimal(percentage_str)
             percentage_multiplier = Decimal(1 + (percentage / 100))
-        except:
+        except (ValueError, TypeError):
             return Response({'error': 'El porcentaje debe ser un número válido.'}, status=status.HTTP_400_BAD_REQUEST)
         products_to_update = Product.objects.filter(id__in=product_ids)
         if not products_to_update.exists():
@@ -343,24 +350,24 @@ class ExportSalesView(APIView):
             end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
         except ValueError:
             return Response({"error": "Formato de fecha inválido. Usar YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         sales = Sale.objects.filter(date_time__date__gte=start_date, date_time__date__lte=end_date).order_by('date_time')
-        
+
         wb = Workbook()
         ws = wb.active
         ws.title = "Reporte de Ventas"
-        
+
         headers = ['Fecha', 'ID Venta', 'Estado', 'Monto Total', 'Neto Gravado (21%)', 'IVA (21%)']
         ws.append(headers)
-        
+
         header_font = Font(bold=True, color="FFFFFF")
         for cell in ws[1]:
             cell.font = header_font
             cell.fill = PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
             cell.alignment = Alignment(horizontal='center')
-            
+
         iva_rate = Decimal('1.21')
-        
+
         for sale in sales:
             total = sale.final_amount or Decimal('0.00')
             neto = Decimal('0.00')
@@ -368,9 +375,9 @@ class ExportSalesView(APIView):
             if total > 0:
                 neto = total / iva_rate
                 iva = total - neto
-            
+
             naive_datetime = sale.date_time.replace(tzinfo=None)
-            
+
             ws.append([
                 naive_datetime,
                 sale.id,
@@ -379,7 +386,7 @@ class ExportSalesView(APIView):
                 neto,
                 iva,
             ])
-            
+
         for col_num, header_title in enumerate(headers, 1):
             col_letter = get_column_letter(col_num)
             if header_title in ['Monto Total', 'Neto Gravado (21%)', 'IVA (21%)']:
@@ -399,6 +406,32 @@ class ExportSalesView(APIView):
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         )
         response['Content-Disposition'] = f'attachment; filename="reporte_ventas_{start_date_str}_a_{end_date_str}.xlsx"'
-        
+
         wb.save(response)
         return response
+
+class ChangePasswordView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        user = request.user
+        old_password = request.data.get('old_password')
+        new_password = request.data.get('new_password')
+        confirm_password = request.data.get('confirm_password')
+
+        if not all([old_password, new_password, confirm_password]):
+            return Response({'error': 'Todos los campos son requeridos.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not user.check_password(old_password):
+            return Response({'error': 'La contraseña actual es incorrecta.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if new_password != confirm_password:
+            return Response({'error': 'Las contraseñas nuevas no coinciden.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if len(new_password) < 8:
+            return Response({'error': 'La nueva contraseña debe tener al menos 8 caracteres.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.set_password(new_password)
+        user.save()
+
+        return Response({'status': 'Contraseña cambiada con éxito.'}, status=status.HTTP_200_OK)

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useContext, useCallback } from 'react';
-import { ShoppingCart, DollarSign, Package, Truck, BarChart2, UserPlus, LogOut, Archive, UploadCloud, CreditCard, Users, ShieldCheck } from 'lucide-react';
+import React, { useState, useEffect, useContext, useCallback, useRef } from 'react';
+import { ShoppingCart, DollarSign, Package, Truck, BarChart2, UserPlus, LogOut, Archive, UploadCloud, CreditCard, Users, ShieldCheck, User as UserIcon } from 'lucide-react';
 import { ContextoAuth } from './context/AuthContext';
 import { Button } from './components/ui/ComponentesUI';
 
@@ -15,21 +15,19 @@ import GestionUsuarios from './pages/usuarios/GestionUsuarios';
 import CierreCaja from './pages/cierre-caja/CierreCaja';
 import ActualizacionMasivaPrecios from './pages/actualizar-precios/ActualizacionMasivaPrecios';
 import GestionMetodosDePago from './pages/metodos-de-pago/GestionMetodosDePago';
+import MiPerfil from './pages/perfil/MiPerfil';
 
 const API_URL = 'http://127.0.0.1:8000/api';
 
 export default function App() {
     const { usuario, tokensAuth, cerrarSesion } = useContext(ContextoAuth);
 
-    // Definición de roles
     const esSuperAdmin = usuario?.groups?.includes('SuperAdmin');
     const esAdmin = usuario?.groups?.includes('Admin');
     const esVendedor = usuario?.groups?.includes('Vendedor');
-
     const esAdminOSuperAdmin = esAdmin || esSuperAdmin;
     const puedeVerPanel = esSuperAdmin || esAdmin || esVendedor;
 
-    // Estados
     const [vista, setVista] = useState('pos');
     const [vistaPanel, setVistaPanel] = useState('dashboard');
     const [productos, setProductos] = useState([]);
@@ -41,30 +39,28 @@ export default function App() {
     const [grupos, setGrupos] = useState([]);
     const [metodosDePago, setMetodosDePago] = useState([]);
     const [metodosDePagoAdmin, setMetodosDePagoAdmin] = useState([]);
-    const [dashboardData, setDashboardData] = useState(null); // <-- NUEVO ESTADO
+    const [dashboardData, setDashboardData] = useState(null);
+    const [menuPerfilAbierto, setMenuPerfilAbierto] = useState(false);
     
     const [cargando, setCargando] = useState(true);
     const [error, setError] = useState(null);
+
+    const menuRef = useRef(null);
 
     const obtenerDatos = useCallback(async () => {
         if (!tokensAuth) return;
         
         let endpoints = ['products', 'payment-methods'];
 
-        // --- INICIO DE CORRECCIÓN ---
-        // Se añade la petición para los datos del dashboard si el usuario puede ver el panel.
         if (puedeVerPanel) {
             endpoints.push('reports/dashboard');
         }
-
         if (esAdminOSuperAdmin) {
             endpoints.push('sales', 'providers', 'clients', 'categories', 'admin/payment-methods');
         }
-        
         if (esSuperAdmin) {
             endpoints.push('users', 'groups');
         }
-        // --- FIN DE CORRECCIÓN ---
 
         try {
             const requests = endpoints.map(endpoint => 
@@ -87,12 +83,9 @@ export default function App() {
             setProductos(dataMap.products || []);
             setMetodosDePago(dataMap['payment-methods'] || []);
             
-            // --- INICIO DE CORRECCIÓN ---
-            // Se guardan los datos del dashboard en el nuevo estado.
             if (puedeVerPanel) {
                 setDashboardData(dataMap['reports/dashboard'] || null);
             }
-            
             if (esAdminOSuperAdmin) {
                 setVentas(dataMap.sales || []);
                 setProveedores(dataMap.providers || []);
@@ -102,12 +95,10 @@ export default function App() {
             } else {
                 setVentas([]);
             }
-
             if (esSuperAdmin) {
                 setTodosLosUsuarios(dataMap.users || []);
                 setGrupos(dataMap.groups || []);
             }
-            // --- FIN DE CORRECCIÓN ---
             setError(null);
         } catch (err) {
             if (err.message !== "Token inválido") { setError("No se pudo conectar con el servidor."); }
@@ -128,8 +119,27 @@ export default function App() {
         if (usuario) {
             setVista('pos');
             setVistaPanel('dashboard');
+            setMenuPerfilAbierto(false); // <-- AQUÍ ESTÁ LA CORRECCIÓN
         }
     }, [usuario]);
+
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (menuRef.current && !menuRef.current.contains(event.target)) {
+                setMenuPerfilAbierto(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, [menuRef]);
+
+    const handleNavegarAPerfil = () => {
+        setVista('panel');
+        setVistaPanel('mi-perfil');
+        setMenuPerfilAbierto(false);
+    };
 
     if (!usuario) {
         return <PaginaLogin />;
@@ -149,11 +159,8 @@ export default function App() {
         const roles = { esSuperAdmin, esAdmin, esVendedor };
 
         switch (vistaPanel) {
-            // --- INICIO DE CORRECCIÓN ---
-            // Ahora se pasa el objeto `dashboardData` completo.
-            // Se renderiza solo si `dashboardData` no es null.
-            case 'dashboard': return dashboardData ? <DashboardAdmin dashboardData={dashboardData} /> : <div>Cargando datos del dashboard...</div>;
-            // --- FIN DE CORRECCIÓN ---
+            case 'dashboard': return dashboardData ? <DashboardAdmin dashboardData={dashboardData} /> : <div>Cargando...</div>;
+            case 'mi-perfil': return <MiPerfil />;
             case 'products': return <GestionProductos productos={productos} proveedores={proveedores} categorias={categorias} obtenerDatos={obtenerDatos} roles={roles} />;
             case 'sales': return esAdminOSuperAdmin && <GestionVentas ventas={ventas} obtenerDatos={obtenerDatos} />;
             case 'providers': return esAdminOSuperAdmin && <GestionProveedores proveedores={proveedores} obtenerDatos={obtenerDatos} />;
@@ -163,7 +170,7 @@ export default function App() {
             case 'bulk-price-update': return esAdminOSuperAdmin && <ActualizacionMasivaPrecios productos={productos} proveedores={proveedores} obtenerDatos={obtenerDatos} />;
             case 'payment-methods': return esAdminOSuperAdmin && <GestionMetodosDePago metodosDePago={metodosDePagoAdmin} obtenerDatos={obtenerDatos} />;
             case 'users': return esSuperAdmin && <GestionUsuarios usuarios={todosLosUsuarios} grupos={grupos} obtenerDatos={obtenerDatos} />;
-            default: return dashboardData ? <DashboardAdmin dashboardData={dashboardData} /> : <div>Cargando datos del dashboard...</div>;
+            default: return dashboardData ? <DashboardAdmin dashboardData={dashboardData} /> : <div>Cargando...</div>;
         }
     };
 
@@ -209,11 +216,17 @@ export default function App() {
                     <div>
                         {puedeVerPanel && vista === 'pos' && <Button onClick={() => setVista('panel')} variant="secondary">Volver al Panel</Button>}
                     </div>
-                    <div className="flex items-center gap-3">
-                        <span className="font-semibold text-gray-700">{usuario.username}</span>
-                        <button onClick={cerrarSesion} className="text-gray-500 hover:text-red-600">
-                            <LogOut size={20} />
-                        </button>
+                    <div className="relative" ref={menuRef}>
+                        <div className="flex items-center gap-3 cursor-pointer" onClick={() => setMenuPerfilAbierto(!menuPerfilAbierto)}>
+                            <span className="font-semibold text-gray-700">{usuario.username}</span>
+                            <UserIcon size={20} className="text-gray-600" />
+                        </div>
+                        {menuPerfilAbierto && (
+                            <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-20">
+                                <a href="#" onClick={(e) => { e.preventDefault(); handleNavegarAPerfil(); }} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Mi Perfil</a>
+                                <a href="#" onClick={(e) => { e.preventDefault(); cerrarSesion(); }} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Cerrar Sesión</a>
+                            </div>
+                        )}
                     </div>
                 </header>
                 <div className="flex-1 p-6 overflow-y-auto">
