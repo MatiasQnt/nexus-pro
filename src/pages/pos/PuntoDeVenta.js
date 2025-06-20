@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Search, ShoppingCart, Trash2, CheckCircle, XCircle } from 'lucide-react';
 import { Card, Button, Modal } from '../../components/ui/ComponentesUI';
 
@@ -7,7 +7,17 @@ const PuntoDeVenta = ({ productos, metodosDePago, onVentaCompleta }) => {
     const [terminoBusqueda, setTerminoBusqueda] = useState('');
     const [modalPagoAbierto, setModalPagoAbierto] = useState(false);
     const [efectivoRecibido, setEfectivoRecibido] = useState(0);
-    const [idMetodoPago, setIdMetodoPago] = useState(metodosDePago[0]?.id || '');
+
+    const [idMetodoPagoSeleccionado, setIdMetodoPagoSeleccionado] = useState('');
+
+    useEffect(() => {
+        if (metodosDePago && metodosDePago.length > 0) {
+            setIdMetodoPagoSeleccionado(metodosDePago[0].id);
+        } else {
+            setIdMetodoPagoSeleccionado('');
+        }
+    }, [metodosDePago]);
+
 
     const productosEnPantalla = useMemo(() => {
         if (terminoBusqueda) {
@@ -16,7 +26,6 @@ const PuntoDeVenta = ({ productos, metodosDePago, onVentaCompleta }) => {
                 p.sku.toLowerCase().includes(terminoBusqueda.toLowerCase())
             );
         }
-        // CAMBIO AQUÍ: Se ajusta para mostrar solo 5 productos como pediste.
         return productos.slice(0, 5);
     }, [productos, terminoBusqueda]);
 
@@ -40,23 +49,18 @@ const PuntoDeVenta = ({ productos, metodosDePago, onVentaCompleta }) => {
 
     const actualizarCantidadManualmente = (productoId, cantidad) => {
         const nuevaCantidad = parseInt(cantidad, 10);
-
         setCarrito(carritoActual => {
             if (isNaN(nuevaCantidad)) {
                 return carritoActual.map(item => item.id === productoId ? { ...item, quantity: '' } : item);
             }
-
             const itemAjustar = carritoActual.find(item => item.id === productoId);
-            
             if (nuevaCantidad <= 0) {
                 return carritoActual.filter(item => item.id !== productoId);
             }
-
             if (nuevaCantidad > itemAjustar.stock) {
                 alert(`Stock máximo (${itemAjustar.stock}) alcanzado para "${itemAjustar.name}".`);
                 return carritoActual.map(item => item.id === productoId ? { ...item, quantity: itemAjustar.stock } : item);
             }
-            
             return carritoActual.map(item => item.id === productoId ? { ...item, quantity: nuevaCantidad } : item);
         });
     };
@@ -68,21 +72,30 @@ const PuntoDeVenta = ({ productos, metodosDePago, onVentaCompleta }) => {
         }
     };
     
+    const subtotal = useMemo(() => carrito.reduce((sum, item) => sum + item.price * (item.quantity || 0), 0), [carrito]);
+    const metodoSeleccionado = useMemo(() => metodosDePago.find(pm => pm.id === parseInt(idMetodoPagoSeleccionado)), [metodosDePago, idMetodoPagoSeleccionado]);
+    const porcentajeAjuste = useMemo(() => metodoSeleccionado ? parseFloat(metodoSeleccionado.adjustment_percentage) : 0, [metodoSeleccionado]);
+    const totalFinal = useMemo(() => subtotal * (1 + porcentajeAjuste / 100), [subtotal, porcentajeAjuste]);
+    const vuelto = useMemo(() => efectivoRecibido > totalFinal ? efectivoRecibido - totalFinal : 0, [efectivoRecibido, totalFinal]);
+
     const procesarPago = () => {
         if (carrito.length === 0) { alert("El carrito está vacío."); return; }
-        if (!idMetodoPago) { alert("Por favor, selecciona un método de pago."); return; }
-        onVentaCompleta(carrito, subtotal, idMetodoPago);
+        if (!idMetodoPagoSeleccionado) { 
+            alert("Por favor, selecciona un método de pago."); 
+            return; 
+        }
+        
+        // --- INICIO DE CORRECCIÓN ---
+        // Ahora enviamos el `subtotal` (sin descuentos) a la función de completar venta.
+        // El backend se encargará de calcular el total final.
+        onVentaCompleta(carrito, subtotal, idMetodoPagoSeleccionado);
+        // --- FIN DE CORRECCIÓN ---
+        
         setCarrito([]); 
         setTerminoBusqueda(''); 
         setModalPagoAbierto(false); 
         setEfectivoRecibido(0);
     };
-    
-    const subtotal = carrito.reduce((sum, item) => sum + item.price * (item.quantity || 0), 0);
-    const metodoSeleccionado = metodosDePago.find(pm => pm.id === parseInt(idMetodoPago));
-    const porcentajeAjuste = metodoSeleccionado ? parseFloat(metodoSeleccionado.adjustment_percentage) : 0;
-    const totalFinal = subtotal * (1 + porcentajeAjuste / 100);
-    const vuelto = efectivoRecibido > totalFinal ? efectivoRecibido - totalFinal : 0;
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-100px)]">
@@ -140,7 +153,7 @@ const PuntoDeVenta = ({ productos, metodosDePago, onVentaCompleta }) => {
                         <span>SUBTOTAL:</span>
                         <span>${subtotal.toFixed(2)}</span>
                     </div>
-                    <Button onClick={() => setModalPagoAbierto(true)} className="w-full text-lg" variant="success" icon={CheckCircle}>Cobrar</Button>
+                    <Button onClick={() => setModalPagoAbierto(true)} className="w-full text-lg" variant="success" icon={CheckCircle} disabled={carrito.length === 0}>Cobrar</Button>
                 </div>
             </Card>
             <Modal isOpen={modalPagoAbierto} onClose={() => setModalPagoAbierto(false)} title="Procesar Pago">
@@ -148,8 +161,12 @@ const PuntoDeVenta = ({ productos, metodosDePago, onVentaCompleta }) => {
                     <div className="text-right text-lg">Subtotal: ${subtotal.toFixed(2)}</div>
                     <div>
                         <label className="font-semibold text-gray-700">Método de Pago</label>
-                        <select value={idMetodoPago} onChange={(e) => setIdMetodoPago(e.target.value)} className="w-full mt-1 p-2 border rounded-lg">
-                            {metodosDePago.map(pm => <option key={pm.id} value={pm.id}>{pm.name} ({pm.adjustment_percentage}%)</option>)}
+                        <select value={idMetodoPagoSeleccionado} onChange={(e) => setIdMetodoPagoSeleccionado(e.target.value)} className="w-full mt-1 p-2 border rounded-lg">
+                            {metodosDePago.length === 0 ? (
+                                <option value="">No hay métodos disponibles</option>
+                            ) : (
+                                metodosDePago.map(pm => <option key={pm.id} value={pm.id}>{pm.name} ({pm.adjustment_percentage}%)</option>)
+                            )}
                         </select>
                     </div>
                     {porcentajeAjuste !== 0 && (

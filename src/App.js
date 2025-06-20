@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext, useCallback, useRef } from 'react';
-import { ShoppingCart, DollarSign, Package, Truck, BarChart2, UserPlus, LogOut, Archive, UploadCloud, CreditCard, Users, ShieldCheck, User as UserIcon } from 'lucide-react';
+import { ShoppingCart, DollarSign, Package, Truck, BarChart2, UserPlus, LogOut, Archive, UploadCloud, CreditCard, Users, ShieldCheck, User as UserIcon, LayoutGrid } from 'lucide-react';
 import { ContextoAuth } from './context/AuthContext';
 import { Button } from './components/ui/ComponentesUI';
 
@@ -16,6 +16,7 @@ import CierreCaja from './pages/cierre-caja/CierreCaja';
 import ActualizacionMasivaPrecios from './pages/actualizar-precios/ActualizacionMasivaPrecios';
 import GestionMetodosDePago from './pages/metodos-de-pago/GestionMetodosDePago';
 import MiPerfil from './pages/perfil/MiPerfil';
+import GestionCategorias from './pages/categorias/GestionCategorias'; // <-- NUEVO IMPORT
 
 const API_URL = 'http://127.0.0.1:8000/api';
 
@@ -94,6 +95,7 @@ export default function App() {
                 setMetodosDePagoAdmin(dataMap['admin/payment-methods'] || []);
             } else {
                 setVentas([]);
+                setCategorias([]);
             }
             if (esSuperAdmin) {
                 setTodosLosUsuarios(dataMap.users || []);
@@ -119,7 +121,7 @@ export default function App() {
         if (usuario) {
             setVista('pos');
             setVistaPanel('dashboard');
-            setMenuPerfilAbierto(false); // <-- AQUÍ ESTÁ LA CORRECCIÓN
+            setMenuPerfilAbierto(false);
         }
     }, [usuario]);
 
@@ -162,6 +164,7 @@ export default function App() {
             case 'dashboard': return dashboardData ? <DashboardAdmin dashboardData={dashboardData} /> : <div>Cargando...</div>;
             case 'mi-perfil': return <MiPerfil />;
             case 'products': return <GestionProductos productos={productos} proveedores={proveedores} categorias={categorias} obtenerDatos={obtenerDatos} roles={roles} />;
+            case 'categories': return esAdminOSuperAdmin && <GestionCategorias categorias={categorias} obtenerDatos={obtenerDatos} />; // <-- NUEVO CASO
             case 'sales': return esAdminOSuperAdmin && <GestionVentas ventas={ventas} obtenerDatos={obtenerDatos} />;
             case 'providers': return esAdminOSuperAdmin && <GestionProveedores proveedores={proveedores} obtenerDatos={obtenerDatos} />;
             case 'clients': return esAdminOSuperAdmin && <GestionClientes clientes={clientes} obtenerDatos={obtenerDatos} />;
@@ -191,6 +194,7 @@ export default function App() {
                             
                             {esAdminOSuperAdmin && (
                                 <>
+                                    <NavItem icon={LayoutGrid} active={vistaPanel === 'categories'} onClick={() => setVistaPanel('categories')}>Categorías</NavItem> {/* <-- NUEVO ITEM EN EL MENÚ */}
                                     <NavItem icon={UploadCloud} active={vistaPanel === 'bulk-price-update'} onClick={() => setVistaPanel('bulk-price-update')}>Actualizar Precios</NavItem>
                                     <NavItem icon={DollarSign} active={vistaPanel === 'sales'} onClick={() => setVistaPanel('sales')}>Ventas</NavItem>
                                     <NavItem icon={Archive} active={vistaPanel === 'cash-count'} onClick={() => setVistaPanel('cash-count')}>Cierre de Caja</NavItem>
