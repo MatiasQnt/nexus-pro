@@ -10,17 +10,30 @@ const API_URL = 'http://127.0.0.1:8000/api';
  * Formulario para crear o editar una categoría.
  */
 const FormularioCategoria = ({ categoria, onGuardar, onCancelar }) => {
-    const [nombre, setNombre] = useState('');
+    // --- INICIO DE CAMBIOS ---
+    const [formData, setFormData] = useState({ name: '', is_active: true });
 
     useEffect(() => {
         if (categoria) {
-            setNombre(categoria.name || '');
+            setFormData({
+                name: categoria.name || '',
+                is_active: categoria.is_active !== undefined ? categoria.is_active : true,
+            });
         }
     }, [categoria]);
 
+    const handleChange = (e) => {
+        const { name, value, type, checked } = e.target;
+        setFormData(prev => ({
+            ...prev,
+            [name]: type === 'checkbox' ? checked : value
+        }));
+    };
+    // --- FIN DE CAMBIOS ---
+
     const handleSubmit = (e) => {
         e.preventDefault();
-        onGuardar({ name: nombre });
+        onGuardar(formData); // Pasamos el objeto completo
     };
 
     return (
@@ -29,13 +42,27 @@ const FormularioCategoria = ({ categoria, onGuardar, onCancelar }) => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de la Categoría</label>
                 <input
                     type="text"
-                    value={nombre}
-                    onChange={(e) => setNombre(e.target.value)}
+                    name="name" // Añadimos name para el handler genérico
+                    value={formData.name}
+                    onChange={handleChange}
                     className="p-2 border rounded-lg w-full"
                     placeholder="Ej: Bebidas"
                     required
                 />
             </div>
+            {/* --- INICIO DE CAMBIOS --- */}
+            <div className="flex items-center gap-2 mt-4">
+                 <input
+                    id="is_active"
+                    name="is_active"
+                    type="checkbox"
+                    checked={formData.is_active}
+                    onChange={handleChange}
+                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <label htmlFor="is_active" className="text-sm font-medium text-gray-700">Activa</label>
+            </div>
+            {/* --- FIN DE CAMBIOS --- */}
             <div className="flex justify-end gap-3 pt-4">
                 <Button type="button" onClick={onCancelar} variant="secondary">Cancelar</Button>
                 <Button type="submit" variant="primary">Guardar</Button>
@@ -44,9 +71,7 @@ const FormularioCategoria = ({ categoria, onGuardar, onCancelar }) => {
     );
 };
 
-/**
- * Componente de UI para el filtro y la búsqueda.
- */
+
 const FiltroBusquedaCategoria = ({ setFiltros, filtros }) => {
     const handleBusquedaChange = (e) => {
         setFiltros(prev => ({ ...prev, busqueda: e.target.value }));
@@ -65,9 +90,7 @@ const FiltroBusquedaCategoria = ({ setFiltros, filtros }) => {
     );
 };
 
-/**
- * Lógica para filtrar las categorías según el término de búsqueda.
- */
+
 const logicaFiltroCategorias = (categorias, filtros) => {
     const { busqueda } = filtros;
     if (!busqueda) return categorias;
@@ -95,7 +118,10 @@ const GestionCategorias = ({ categorias, obtenerDatos }) => {
     };
 
     const abrirModalNuevo = () => {
-        setCategoriaSeleccionada({});
+        // --- INICIO DE CAMBIOS ---
+        // Se establece el estado por defecto para una nueva categoría
+        setCategoriaSeleccionada({ name: '', is_active: true });
+        // --- FIN DE CAMBIOS ---
         setModalAbierto(true);
     };
 
@@ -128,24 +154,30 @@ const GestionCategorias = ({ categorias, obtenerDatos }) => {
     };
     
     const borrarCategoria = async (idCategoria) => {
-        if (window.confirm("¿Estás seguro de que quieres eliminar esta categoría? Si tiene productos asociados, no podrás eliminarla.")) {
+        // --- INICIO DE CAMBIOS ---
+        if (window.confirm("¿Estás seguro de que quieres eliminar esta categoría?")) {
             try {
                 const response = await fetch(`${API_URL}/categories/${idCategoria}/`, {
                     method: 'DELETE',
                     headers: { 'Authorization': 'Bearer ' + String(tokensAuth.access) }
                 });
 
-                if (!response.ok) {
+                if (response.status === 204) {
+                    alert('Categoría eliminada con éxito.');
+                } else if (response.ok) {
+                    const data = await response.json();
+                    alert(data.detail); // Muestra mensaje: "Ha sido desactivada."
+                } else {
                     const errorData = await response.json();
                     throw new Error(errorData.detail || 'Error al eliminar la categoría.');
                 }
                 
-                alert('Categoría eliminada.');
                 obtenerDatos();
             } catch (err) {
                 alert(`Error: ${err.message}`);
             }
         }
+        // --- FIN DE CAMBIOS ---
     };
 
     return (
@@ -155,17 +187,20 @@ const GestionCategorias = ({ categorias, obtenerDatos }) => {
                 <Button onClick={abrirModalNuevo} icon={PlusCircle}>Nueva Categoría</Button>
             </div>
             
-            {/* --- INICIO DE CORRECCIÓN --- */}
             {FiltrosUI}
-            {/* --- FIN DE CORRECCIÓN --- */}
 
+            {/* --- INICIO DE CAMBIOS --- */}
             <Table 
-                headers={['ID', 'Nombre', 'Acciones']} 
+                headers={['Nombre', 'Estado', 'Acciones']} 
                 data={datosPaginados}
                 renderRow={(cat) => (
-                    <tr key={cat.id} className="bg-white border-b hover:bg-gray-50">
-                        <td className="px-6 py-4 text-gray-500">{cat.id}</td>
+                    <tr key={cat.id} className={`border-b hover:bg-gray-50 ${!cat.is_active ? 'bg-gray-100 text-gray-500' : 'bg-white'}`}>
                         <td className="px-6 py-4 font-medium">{cat.name}</td>
+                        <td className="px-6 py-4">
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${cat.is_active ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                {cat.is_active ? 'Activa' : 'Inactiva'}
+                            </span>
+                        </td>
                         <td className="px-6 py-4 flex gap-2">
                             <Button onClick={() => abrirModalEditar(cat)} variant="secondary" size="sm" icon={Edit} />
                             <Button onClick={() => borrarCategoria(cat.id)} variant="danger" size="sm" icon={Trash2} />
@@ -173,10 +208,9 @@ const GestionCategorias = ({ categorias, obtenerDatos }) => {
                     </tr>
                 )}
             />
-
-            {/* --- INICIO DE CORRECCIÓN --- */}
+            {/* --- FIN DE CAMBIOS --- */}
+            
             {PaginacionUI}
-            {/* --- FIN DE CORRECCIÓN --- */}
             
             <Modal isOpen={modalAbierto} onClose={cerrarModal} title={categoriaSeleccionada?.id ? 'Editar Categoría' : 'Nueva Categoría'}>
                 {categoriaSeleccionada && <FormularioCategoria categoria={categoriaSeleccionada} onGuardar={guardarCategoria} onCancelar={cerrarModal} />}

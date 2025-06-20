@@ -1,3 +1,5 @@
+# api/views.py
+
 import csv
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -35,11 +37,21 @@ class MyTokenObtainPairView(TokenObtainPairView):
     serializer_class = MyTokenObtainPairSerializer
 
 class ProductViewSet(viewsets.ModelViewSet):
+    # --- INICIO DE CAMBIOS ---
     queryset = Product.objects.all().order_by('name')
     serializer_class = ProductSerializer
 
+    # CAMBIO: Modificamos get_queryset para permitir el filtrado por estado
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        estado = self.request.query_params.get('estado')
+        if estado:
+            queryset = queryset.filter(estado=estado)
+        return queryset
+
     def get_permissions(self):
-        if self.action in ['list', 'retrieve', 'update_stock']:
+        # CAMBIO: Añadimos la nueva acción 'popular' a las acciones permitidas
+        if self.action in ['list', 'retrieve', 'update_stock', 'popular_for_pos']:
             self.permission_classes = [IsAuthenticated, CanViewPanel]
         elif self.action in ['create', 'update', 'partial_update', 'destroy']:
             self.permission_classes = [IsAuthenticated, IsSuperAdminOrAdmin]
@@ -47,6 +59,52 @@ class ProductViewSet(viewsets.ModelViewSet):
             self.permission_classes = [IsAuthenticated]
         return super().get_permissions()
 
+    # CAMBIO: Sobrescribimos el método destroy para la lógica de soft-delete
+    def destroy(self, request, *args, **kwargs):
+        product = self.get_object()
+        # Verificamos si el producto ha sido usado en alguna venta
+        if SaleDetail.objects.filter(product=product).exists():
+            # Si ha sido usado, lo desactivamos en lugar de borrarlo
+            product.estado = 'inactivo'
+            product.save()
+            return Response(
+                {"detail": "Este producto no se puede eliminar porque tiene ventas asociadas. Se ha marcado como inactivo."},
+                status=status.HTTP_200_OK
+            )
+        else:
+            # Si no ha sido usado, lo eliminamos permanentemente
+            product.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+    # CAMBIO: Nueva acción para obtener productos populares para el POS
+    @action(detail=False, methods=['get'], url_path='popular-for-pos')
+    def popular_for_pos(self, request):
+        """
+        Devuelve los 10 productos activos más vendidos en los últimos 90 días.
+        """
+        ninety_days_ago = timezone.now() - timedelta(days=90)
+        
+        # Obtenemos los IDs de los productos más vendidos y su cantidad
+        sold_products_ranking = SaleDetail.objects.filter(
+            sale__status='Completada',
+            sale__date_time__gte=ninety_days_ago,
+            product__estado='activo' # Solo productos activos
+        ).values('product_id').annotate(
+            total_sold=Sum('quantity')
+        ).order_by('-total_sold')[:10]
+
+        # Mapeamos los IDs a los objetos de producto
+        product_ids_ordered = [item['product_id'] for item in sold_products_ranking]
+        
+        # Obtenemos los productos manteniendo el orden de popularidad
+        products_queryset = Product.objects.filter(id__in=product_ids_ordered)
+        products_dict = {product.id: product for product in products_queryset}
+        sorted_products = [products_dict[pid] for pid in product_ids_ordered if pid in products_dict]
+        
+        serializer = self.get_serializer(sorted_products, many=True)
+        return Response(serializer.data)
+    # --- FIN DE CAMBIOS ---
+    
     @action(detail=True, methods=['patch'], url_path='update-stock')
     def update_stock(self, request, pk=None):
         product = self.get_object()
@@ -64,6 +122,22 @@ class CategoryViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsSuperAdminOrAdmin]
     queryset = Category.objects.all().order_by('name')
     serializer_class = CategorySerializer
+
+    def destroy(self, request, *args, **kwargs):
+        category = self.get_object()
+        # Verificamos si la categoría está siendo usada por algún producto
+        if Product.objects.filter(category=category).exists():
+            # Si está en uso, la desactivamos
+            category.is_active = False
+            category.save()
+            return Response(
+                {"detail": "Esta categoría está en uso por uno o más productos. Ha sido desactivada."},
+                status=status.HTTP_200_OK
+            )
+        else:
+            # Si no está en uso, la eliminamos permanentemente
+            category.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
 
 class ProviderViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsSuperAdminOrAdmin]
@@ -120,7 +194,12 @@ class SaleViewSet(viewsets.ModelViewSet):
                 payment_method = PaymentMethod.objects.get(id=payment_method_id)
                 sale = serializer.save(user=request.user, payment_method=payment_method)
                 for detail in details_data:
+                    # --- INICIO DE CAMBIOS ---
+                    # CAMBIO: Verificamos que el producto esté activo antes de vender
                     product = Product.objects.get(id=detail['product_id'])
+                    if product.estado != 'activo':
+                        raise serializers.ValidationError(f"El producto '{product.name}' no está activo y no se puede vender.")
+                    # --- FIN DE CAMBIOS ---
                     if product.stock < detail['quantity']:
                         raise serializers.ValidationError(f"No hay stock para {product.name}")
                     product.stock -= detail['quantity']
@@ -177,15 +256,20 @@ class AdminPaymentMethodViewSet(viewsets.ModelViewSet):
     serializer_class = PaymentMethodSerializer
 
     def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
-        try:
-            self.perform_destroy(instance)
-        except ProtectedError:
+        method = self.get_object()
+        # Verificamos si el método de pago ha sido usado en alguna venta
+        if Sale.objects.filter(payment_method=method).exists():
+            # Si está en uso, lo desactivamos
+            method.is_active = False
+            method.save()
             return Response(
-                {"detail": "Este método no se puede eliminar porque ya ha sido usado en ventas. Puede desactivarlo editándolo."},
-                status=status.HTTP_400_BAD_REQUEST
+                {"detail": "Este método de pago está en uso y no se puede eliminar. Ha sido desactivado."},
+                status=status.HTTP_200_OK
             )
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        else:
+            # Si no está en uso, lo eliminamos permanentemente
+            method.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
 
 class DashboardReportsView(APIView):
     permission_classes = [IsAuthenticated, CanViewPanel]
@@ -196,7 +280,12 @@ class DashboardReportsView(APIView):
 
         today_sales_qs = Sale.objects.filter(date_time__date=today, status='Completada')
         total_sales_today = today_sales_qs.aggregate(total=Sum('final_amount'))['total'] or 0
-        gross_profit_today = SaleDetail.objects.filter(sale__in=today_sales_qs).annotate(
+        
+        # --- INICIO DE CAMBIOS ---
+        # CAMBIO: Aseguramos que los cálculos solo usen productos que estaban activos
+        gross_profit_today = SaleDetail.objects.filter(
+            sale__in=today_sales_qs
+        ).annotate(
             profit_per_item=F('unit_price') - F('product__cost_price')
         ).aggregate(total_profit=Sum(F('quantity') * F('profit_per_item')))['total_profit'] or 0
 
@@ -206,9 +295,10 @@ class DashboardReportsView(APIView):
             'ticket_promedio': total_sales_today / today_sales_qs.count() if today_sales_qs.count() > 0 else 0,
             'productos_vendidos': SaleDetail.objects.filter(sale__in=today_sales_qs).aggregate(total_quantity=Sum('quantity'))['total_quantity'] or 0
         }
-
+        
+        # CAMBIO: Productos con bajo stock ahora solo muestra los activos
         low_stock_limit = 5
-        low_stock_products_query = Product.objects.filter(stock__lte=low_stock_limit, stock__gt=0).order_by('stock').values('id', 'name', 'stock')[:10]
+        low_stock_products_query = Product.objects.filter(stock__lte=low_stock_limit, stock__gt=0, estado='activo').order_by('stock').values('id', 'name', 'stock')[:10]
 
         sales_by_payment_method = Sale.objects.filter(date_time__date__gte=last_30_days_start, status='Completada').values('payment_method__name').annotate(total=Sum('final_amount')).order_by('-total')
         daily_sales = Sale.objects.filter(date_time__date__gte=last_30_days_start, status='Completada').annotate(day=TruncDay('date_time')).values('day').annotate(total_sales=Sum('final_amount')).order_by('day')
@@ -216,8 +306,32 @@ class DashboardReportsView(APIView):
         peak_hours_query = Sale.objects.filter(date_time__date__gte=last_30_days_start, status='Completada').annotate(hour=ExtractHour('date_time')).values('hour').annotate(total=Sum('final_amount')).order_by('hour')
         sales_by_hour_dict = {item['hour']: item['total'] for item in peak_hours_query}
         peak_hours_data = [{'name': f"{h:02d}h", 'Ventas': sales_by_hour_dict.get(h, 0)} for h in range(24)]
-        sales_by_category_query = SaleDetail.objects.filter(sale__status='Completada', sale__date_time__date__gte=last_30_days_start).values('product__category__name').annotate(value=Sum(F('quantity') * F('unit_price'))).order_by('-value')
+        
+        sales_by_category_query = SaleDetail.objects.filter(
+            sale__status='Completada', 
+            sale__date_time__date__gte=last_30_days_start
+        ).values('product__category__name').annotate(value=Sum(F('quantity') * F('unit_price'))).order_by('-value')
 
+        most_sold_products_query = SaleDetail.objects.filter(
+            sale__status='Completada', 
+            sale__date_time__date__gte=last_30_days_start
+        ).values('product__name').annotate(value=Sum('quantity')).order_by('-value')[:10]
+        
+        most_profitable_products_query = SaleDetail.objects.filter(
+            sale__status='Completada', 
+            sale__date_time__date__gte=last_30_days_start
+        ).annotate(
+            profit_per_sale=F('quantity') * (F('product__sale_price') - F('product__cost_price'))
+        ).values('product__name').annotate(value=Sum('profit_per_sale')).order_by('-value')[:10]
+        
+        dormant_period_days = 60
+        dormant_since = today - timedelta(days=dormant_period_days)
+        sold_product_ids = SaleDetail.objects.filter(sale__status='Completada', sale__date_time__date__gte=dormant_since).values_list('product_id', flat=True).distinct()
+        
+        # CAMBIO: Productos dormidos ahora solo muestra los activos
+        dormant_products_query = Product.objects.filter(stock__gt=0, estado='activo').exclude(id__in=sold_product_ids).values('name', 'sku', 'stock')[:10]
+        # --- FIN DE CAMBIOS ---
+        
         chart_data = {
             'ventas_por_metodo_pago': [{'name': item['payment_method__name'] or 'No especificado', 'value': item['total']} for item in sales_by_payment_method],
             'ventas_diarias': [{'name': item['day'].strftime('%d/%m'), 'Ventas': item['total_sales']} for item in daily_sales],
@@ -226,17 +340,11 @@ class DashboardReportsView(APIView):
             'ventas_por_categoria': [{'name': item['product__category__name'], 'Ventas': item['value']} for item in sales_by_category_query]
         }
 
-        most_sold_products_query = SaleDetail.objects.filter(sale__status='Completada', sale__date_time__date__gte=last_30_days_start).values('product__name').annotate(value=Sum('quantity')).order_by('-value')[:10]
-        most_profitable_products_query = SaleDetail.objects.filter(sale__status='Completada', sale__date_time__date__gte=last_30_days_start).annotate(profit_per_sale=F('quantity') * (F('product__sale_price') - F('product__cost_price'))).values('product__name').annotate(value=Sum('profit_per_sale')).order_by('-value')[:10]
         rankings_data = {
             'mas_vendidos': list(most_sold_products_query),
             'mas_rentables': list(most_profitable_products_query)
         }
-
-        dormant_period_days = 60
-        dormant_since = today - timedelta(days=dormant_period_days)
-        sold_product_ids = SaleDetail.objects.filter(sale__status='Completada', sale__date_time__date__gte=dormant_since).values_list('product_id', flat=True).distinct()
-        dormant_products_query = Product.objects.filter(stock__gt=0).exclude(id__in=sold_product_ids).values('name', 'sku', 'stock')[:10]
+        
         other_reports = {
             'productos_dormidos': list(dormant_products_query)
         }
@@ -308,7 +416,7 @@ class DailyCashCountView(APIView):
             )
             return Response({'message': 'Cierre de caja guardado con éxito.'}, status=status.HTTP_201_CREATED)
         except InvalidOperation:
-             return Response({'error': 'Los montos deben ser números válidos.'}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({'error': 'Los montos deben ser números válidos.'}, status=status.HTTP_400_BAD_REQUEST)
 
 class BulkPriceUpdateView(APIView):
     permission_classes = [IsAuthenticated, IsSuperAdminOrAdmin]

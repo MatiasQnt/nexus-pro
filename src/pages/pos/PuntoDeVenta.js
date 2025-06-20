@@ -1,33 +1,70 @@
-import React, { useState, useMemo, useEffect } from 'react';
+// src/pages/PuntoDeVenta.js
+
+import React, { useState, useMemo, useEffect, useContext } from 'react'; // Importamos useContext
 import { Search, ShoppingCart, Trash2, CheckCircle, XCircle } from 'lucide-react';
 import { Card, Button, Modal } from '../../components/ui/ComponentesUI';
+import { ContextoAuth } from '../../context/AuthContext'; // Importamos el contexto de autenticación
 
-const PuntoDeVenta = ({ productos, metodosDePago, onVentaCompleta }) => {
+// --- INICIO DE CAMBIOS ---
+const API_URL = 'http://127.0.0.1:8000/api';
+// --- FIN DE CAMBIOS ---
+
+// CAMBIO: Ahora pasamos 'productosActivos' en lugar de 'productos'
+const PuntoDeVenta = ({ productosActivos, metodosDePago, onVentaCompleta }) => {
     const [carrito, setCarrito] = useState([]);
     const [terminoBusqueda, setTerminoBusqueda] = useState('');
     const [modalPagoAbierto, setModalPagoAbierto] = useState(false);
     const [efectivoRecibido, setEfectivoRecibido] = useState(0);
-
     const [idMetodoPagoSeleccionado, setIdMetodoPagoSeleccionado] = useState('');
+
+    // --- INICIO DE CAMBIOS ---
+    const [productosPopulares, setProductosPopulares] = useState([]);
+    const { tokensAuth } = useContext(ContextoAuth); // Usamos el token para la nueva llamada a la API
+
+    useEffect(() => {
+        // Cargar productos populares al montar el componente
+        const fetchPopularProducts = async () => {
+            try {
+                const response = await fetch(`${API_URL}/products/popular-for-pos/`, {
+                    headers: { 'Authorization': 'Bearer ' + String(tokensAuth.access) }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    setProductosPopulares(data);
+                }
+            } catch (error) {
+                console.error("Error al cargar productos populares:", error);
+            }
+        };
+
+        if (tokensAuth) {
+            fetchPopularProducts();
+        }
+    }, [tokensAuth]);
+    // --- FIN DE CAMBIOS ---
 
     useEffect(() => {
         if (metodosDePago && metodosDePago.length > 0) {
-            setIdMetodoPagoSeleccionado(metodosDePago[0].id);
+            const metodoEfectivo = metodosDePago.find(m => m.name.toLowerCase() === 'efectivo') || metodosDePago[0];
+            setIdMetodoPagoSeleccionado(metodoEfectivo.id);
         } else {
             setIdMetodoPagoSeleccionado('');
         }
     }, [metodosDePago]);
 
-
     const productosEnPantalla = useMemo(() => {
         if (terminoBusqueda) {
-            return productos.filter(p => 
+            // CAMBIO: Buscamos en 'productosActivos'
+            return productosActivos.filter(p => 
                 p.name.toLowerCase().includes(terminoBusqueda.toLowerCase()) || 
                 p.sku.toLowerCase().includes(terminoBusqueda.toLowerCase())
             );
         }
-        return productos.slice(0, 5);
-    }, [productos, terminoBusqueda]);
+        // CAMBIO: Mostramos los productos populares si no hay búsqueda
+        return productosPopulares;
+    }, [productosActivos, productosPopulares, terminoBusqueda]);
+
+    // ... (El resto de la lógica del componente: agregarACarrito, actualizarCantidadManualmente, etc., no cambia) ...
 
     const agregarACarrito = (producto) => {
         if (producto.stock <= 0) { 
@@ -80,21 +117,9 @@ const PuntoDeVenta = ({ productos, metodosDePago, onVentaCompleta }) => {
 
     const procesarPago = () => {
         if (carrito.length === 0) { alert("El carrito está vacío."); return; }
-        if (!idMetodoPagoSeleccionado) { 
-            alert("Por favor, selecciona un método de pago."); 
-            return; 
-        }
-        
-        // --- INICIO DE CORRECCIÓN ---
-        // Ahora enviamos el `subtotal` (sin descuentos) a la función de completar venta.
-        // El backend se encargará de calcular el total final.
+        if (!idMetodoPagoSeleccionado) { alert("Por favor, selecciona un método de pago."); return; }
         onVentaCompleta(carrito, subtotal, idMetodoPagoSeleccionado);
-        // --- FIN DE CORRECCIÓN ---
-        
-        setCarrito([]); 
-        setTerminoBusqueda(''); 
-        setModalPagoAbierto(false); 
-        setEfectivoRecibido(0);
+        setCarrito([]); setTerminoBusqueda(''); setModalPagoAbierto(false); setEfectivoRecibido(0);
     };
 
     return (
@@ -104,7 +129,7 @@ const PuntoDeVenta = ({ productos, metodosDePago, onVentaCompleta }) => {
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20}/>
                     <input type="text" placeholder="Buscar producto por nombre o SKU..." className="w-full pl-10 pr-4 py-3 border rounded-lg text-lg" value={terminoBusqueda} onChange={(e) => setTerminoBusqueda(e.target.value)} />
                 </div>
-                <h3 className="font-semibold text-gray-600 px-2 mb-2">{terminoBusqueda ? 'Resultados de Búsqueda' : 'Productos Frecuentes'}</h3>
+                <h3 className="font-semibold text-gray-600 px-2 mb-2">{terminoBusqueda ? 'Resultados de Búsqueda' : 'Productos Populares'}</h3>
                 <div className="flex-grow overflow-y-auto pr-2">
                     {productosEnPantalla.map(producto => (
                         <div key={producto.id} onClick={() => agregarACarrito(producto)} className={`flex justify-between items-center p-3 mb-2 rounded-lg border-b text-left ${producto.stock > 0 ? 'cursor-pointer hover:bg-indigo-100 bg-white' : 'bg-gray-200 opacity-60'}`}>
@@ -117,6 +142,7 @@ const PuntoDeVenta = ({ productos, metodosDePago, onVentaCompleta }) => {
                     ))}
                 </div>
             </div>
+            {/* ... (El resto del JSX del componente no cambia) ... */}
             <Card className="flex flex-col">
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2"><ShoppingCart size={24}/> Venta Actual</h2>
@@ -132,13 +158,7 @@ const PuntoDeVenta = ({ productos, metodosDePago, onVentaCompleta }) => {
                                     <p className="text-sm text-gray-600">${item.price.toFixed(2)}</p>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <input 
-                                        type="number" 
-                                        value={item.quantity} 
-                                        onChange={(e) => actualizarCantidadManualmente(item.id, e.target.value)} 
-                                        className="w-16 text-center font-bold border rounded-md p-1"
-                                        onFocus={(e) => e.target.select()}
-                                    />
+                                    <input type="number" value={item.quantity} onChange={(e) => actualizarCantidadManualmente(item.id, e.target.value)} className="w-16 text-center font-bold border rounded-md p-1" onFocus={(e) => e.target.select()} />
                                     <p className="font-bold w-24 text-right">${(item.price * (item.quantity || 0)).toFixed(2)}</p>
                                     <button onClick={() => setCarrito(carrito.filter(c => c.id !== item.id))} className="text-red-500 hover:text-red-700">
                                         <Trash2 size={18} />
@@ -162,18 +182,10 @@ const PuntoDeVenta = ({ productos, metodosDePago, onVentaCompleta }) => {
                     <div>
                         <label className="font-semibold text-gray-700">Método de Pago</label>
                         <select value={idMetodoPagoSeleccionado} onChange={(e) => setIdMetodoPagoSeleccionado(e.target.value)} className="w-full mt-1 p-2 border rounded-lg">
-                            {metodosDePago.length === 0 ? (
-                                <option value="">No hay métodos disponibles</option>
-                            ) : (
-                                metodosDePago.map(pm => <option key={pm.id} value={pm.id}>{pm.name} ({pm.adjustment_percentage}%)</option>)
-                            )}
+                            {metodosDePago.length === 0 ? (<option value="">No hay métodos disponibles</option>) : (metodosDePago.map(pm => <option key={pm.id} value={pm.id}>{pm.name} ({pm.adjustment_percentage}%)</option>))}
                         </select>
                     </div>
-                    {porcentajeAjuste !== 0 && (
-                        <div className={`text-right text-lg ${porcentajeAjuste < 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            Ajuste: {porcentajeAjuste > 0 ? '+' : ''}{porcentajeAjuste.toFixed(2)}%
-                        </div>
-                    )}
+                    {porcentajeAjuste !== 0 && (<div className={`text-right text-lg ${porcentajeAjuste < 0 ? 'text-green-600' : 'text-red-600'}`}>Ajuste: {porcentajeAjuste > 0 ? '+' : ''}{porcentajeAjuste.toFixed(2)}%</div>)}
                     <div className="text-center text-4xl font-bold text-indigo-600 mb-4">${totalFinal.toFixed(2)}</div>
                     {metodoSeleccionado?.name === 'Efectivo' && (
                         <div>

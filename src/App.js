@@ -16,7 +16,7 @@ import CierreCaja from './pages/cierre-caja/CierreCaja';
 import ActualizacionMasivaPrecios from './pages/actualizar-precios/ActualizacionMasivaPrecios';
 import GestionMetodosDePago from './pages/metodos-de-pago/GestionMetodosDePago';
 import MiPerfil from './pages/perfil/MiPerfil';
-import GestionCategorias from './pages/categorias/GestionCategorias'; // <-- NUEVO IMPORT
+import GestionCategorias from './pages/categorias/GestionCategorias';
 
 const API_URL = 'http://127.0.0.1:8000/api';
 
@@ -31,7 +31,14 @@ export default function App() {
 
     const [vista, setVista] = useState('pos');
     const [vistaPanel, setVistaPanel] = useState('dashboard');
+    
+    // --- INICIO DE CAMBIOS ---
+    // Mantenemos 'productos' para la gestión (activos e inactivos)
     const [productos, setProductos] = useState([]);
+    // NUEVO ESTADO: 'productosActivos' solo para el Punto de Venta (POS)
+    const [productosActivos, setProductosActivos] = useState([]);
+    // --- FIN DE CAMBIOS ---
+
     const [ventas, setVentas] = useState([]);
     const [proveedores, setProveedores] = useState([]);
     const [clientes, setClientes] = useState([]);
@@ -51,6 +58,7 @@ export default function App() {
     const obtenerDatos = useCallback(async () => {
         if (!tokensAuth) return;
         
+        // El endpoint de 'products' trae TODOS los productos.
         let endpoints = ['products', 'payment-methods'];
 
         if (puedeVerPanel) {
@@ -81,7 +89,15 @@ export default function App() {
             const data = await Promise.all(requests);
             const dataMap = Object.fromEntries(endpoints.map((e, i) => [e, data[i]]));
 
-            setProductos(dataMap.products || []);
+            // --- INICIO DE CAMBIOS ---
+            // Guardamos la lista completa de productos para la gestión
+            const todosLosProductos = dataMap.products || [];
+            setProductos(todosLosProductos);
+            
+            // Filtramos y guardamos solo los productos activos para el POS
+            setProductosActivos(todosLosProductos.filter(p => p.estado === 'activo'));
+            // --- FIN DE CAMBIOS ---
+            
             setMetodosDePago(dataMap['payment-methods'] || []);
             
             if (puedeVerPanel) {
@@ -164,7 +180,7 @@ export default function App() {
             case 'dashboard': return dashboardData ? <DashboardAdmin dashboardData={dashboardData} /> : <div>Cargando...</div>;
             case 'mi-perfil': return <MiPerfil />;
             case 'products': return <GestionProductos productos={productos} proveedores={proveedores} categorias={categorias} obtenerDatos={obtenerDatos} roles={roles} />;
-            case 'categories': return esAdminOSuperAdmin && <GestionCategorias categorias={categorias} obtenerDatos={obtenerDatos} />; // <-- NUEVO CASO
+            case 'categories': return esAdminOSuperAdmin && <GestionCategorias categorias={categorias} obtenerDatos={obtenerDatos} />;
             case 'sales': return esAdminOSuperAdmin && <GestionVentas ventas={ventas} obtenerDatos={obtenerDatos} />;
             case 'providers': return esAdminOSuperAdmin && <GestionProveedores proveedores={proveedores} obtenerDatos={obtenerDatos} />;
             case 'clients': return esAdminOSuperAdmin && <GestionClientes clientes={clientes} obtenerDatos={obtenerDatos} />;
@@ -194,7 +210,7 @@ export default function App() {
                             
                             {esAdminOSuperAdmin && (
                                 <>
-                                    <NavItem icon={LayoutGrid} active={vistaPanel === 'categories'} onClick={() => setVistaPanel('categories')}>Categorías</NavItem> {/* <-- NUEVO ITEM EN EL MENÚ */}
+                                    <NavItem icon={LayoutGrid} active={vistaPanel === 'categories'} onClick={() => setVistaPanel('categories')}>Categorías</NavItem>
                                     <NavItem icon={UploadCloud} active={vistaPanel === 'bulk-price-update'} onClick={() => setVistaPanel('bulk-price-update')}>Actualizar Precios</NavItem>
                                     <NavItem icon={DollarSign} active={vistaPanel === 'sales'} onClick={() => setVistaPanel('sales')}>Ventas</NavItem>
                                     <NavItem icon={Archive} active={vistaPanel === 'cash-count'} onClick={() => setVistaPanel('cash-count')}>Cierre de Caja</NavItem>
@@ -236,7 +252,7 @@ export default function App() {
                 <div className="flex-1 p-6 overflow-y-auto">
                     {vista === 'panel' && puedeVerPanel
                         ? renderizarVistaPanel()
-                        : <PuntoDeVenta productos={productos} metodosDePago={metodosDePago} onVentaCompleta={handleVentaCompleta} />
+                        : <PuntoDeVenta productosActivos={productosActivos} metodosDePago={metodosDePago} onVentaCompleta={handleVentaCompleta} />
                     }
                 </div>
             </main>

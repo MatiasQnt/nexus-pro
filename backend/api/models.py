@@ -1,3 +1,5 @@
+# api/models.py
+
 from django.db import models
 from django.contrib.auth.models import User
 
@@ -26,17 +28,33 @@ class Provider(models.Model):
 
 class Category(models.Model):
     name = models.CharField(max_length=100, unique=True, verbose_name='Nombre')
+    is_active = models.BooleanField(default=True, verbose_name='Activa')
     def __str__(self): return self.name
 
 class Product(models.Model):
+    # --- INICIO DE CAMBIOS ---
+    STATUS_CHOICES = [
+        ('activo', 'Activo'),
+        ('inactivo', 'Inactivo'),
+    ]
+
     sku = models.CharField(max_length=50, unique=True, verbose_name='SKU / Código')
     name = models.CharField(max_length=200, verbose_name='Nombre')
     description = models.TextField(blank=True, null=True, verbose_name='Descripción')
     cost_price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name='Precio de Costo')
     sale_price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name='Precio de Venta')
-    stock = models.PositiveIntegerField(default=0, verbose_name='Stock Actual')
+    # CAMBIO: Stock inicial por defecto es 1
+    stock = models.PositiveIntegerField(default=1, verbose_name='Stock Actual')
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, verbose_name='Categoría')
     provider = models.ForeignKey(Provider, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='Proveedor')
+    # CAMBIO: Nuevo campo de estado
+    estado = models.CharField(
+        max_length=10, 
+        choices=STATUS_CHOICES, 
+        default='activo', 
+        verbose_name='Estado'
+    )
+    # --- FIN DE CAMBIOS ---
     def __str__(self): return self.name
 
 class Client(models.Model):
@@ -47,7 +65,6 @@ class Client(models.Model):
     def __str__(self): return self.name
 
 class Sale(models.Model):
-    # Definimos las opciones para el estado de la venta
     STATUS_CHOICES = [
         ('Completada', 'Completada'),
         ('Cancelada', 'Cancelada'),
