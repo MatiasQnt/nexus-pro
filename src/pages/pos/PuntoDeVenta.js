@@ -1,47 +1,14 @@
-// src/pages/PuntoDeVenta.js
-
-import React, { useState, useMemo, useEffect, useContext } from 'react'; // Importamos useContext
+import React, { useState, useMemo, useEffect } from 'react';
 import { Search, ShoppingCart, Trash2, CheckCircle, XCircle } from 'lucide-react';
 import { Card, Button, Modal } from '../../components/ui/ComponentesUI';
-import { ContextoAuth } from '../../context/AuthContext'; // Importamos el contexto de autenticación
+import { toast } from 'sonner';
 
-// --- INICIO DE CAMBIOS ---
-const API_URL = 'http://127.0.0.1:8000/api';
-// --- FIN DE CAMBIOS ---
-
-// CAMBIO: Ahora pasamos 'productosActivos' en lugar de 'productos'
-const PuntoDeVenta = ({ productosActivos, metodosDePago, onVentaCompleta }) => {
+const PuntoDeVenta = ({ productosActivos, metodosDePago, onVentaCompleta, productosPopulares }) => {
     const [carrito, setCarrito] = useState([]);
     const [terminoBusqueda, setTerminoBusqueda] = useState('');
     const [modalPagoAbierto, setModalPagoAbierto] = useState(false);
     const [efectivoRecibido, setEfectivoRecibido] = useState(0);
     const [idMetodoPagoSeleccionado, setIdMetodoPagoSeleccionado] = useState('');
-
-    // --- INICIO DE CAMBIOS ---
-    const [productosPopulares, setProductosPopulares] = useState([]);
-    const { tokensAuth } = useContext(ContextoAuth); // Usamos el token para la nueva llamada a la API
-
-    useEffect(() => {
-        // Cargar productos populares al montar el componente
-        const fetchPopularProducts = async () => {
-            try {
-                const response = await fetch(`${API_URL}/products/popular-for-pos/`, {
-                    headers: { 'Authorization': 'Bearer ' + String(tokensAuth.access) }
-                });
-                if (response.ok) {
-                    const data = await response.json();
-                    setProductosPopulares(data);
-                }
-            } catch (error) {
-                console.error("Error al cargar productos populares:", error);
-            }
-        };
-
-        if (tokensAuth) {
-            fetchPopularProducts();
-        }
-    }, [tokensAuth]);
-    // --- FIN DE CAMBIOS ---
 
     useEffect(() => {
         if (metodosDePago && metodosDePago.length > 0) {
@@ -54,28 +21,24 @@ const PuntoDeVenta = ({ productosActivos, metodosDePago, onVentaCompleta }) => {
 
     const productosEnPantalla = useMemo(() => {
         if (terminoBusqueda) {
-            // CAMBIO: Buscamos en 'productosActivos'
             return productosActivos.filter(p => 
                 p.name.toLowerCase().includes(terminoBusqueda.toLowerCase()) || 
                 p.sku.toLowerCase().includes(terminoBusqueda.toLowerCase())
             );
         }
-        // CAMBIO: Mostramos los productos populares si no hay búsqueda
         return productosPopulares;
     }, [productosActivos, productosPopulares, terminoBusqueda]);
 
-    // ... (El resto de la lógica del componente: agregarACarrito, actualizarCantidadManualmente, etc., no cambia) ...
-
     const agregarACarrito = (producto) => {
         if (producto.stock <= 0) { 
-            alert(`El producto "${producto.name}" no tiene stock.`); 
+            toast.error(`El producto "${producto.name}" no tiene stock.`); 
             return; 
         }
         setCarrito(carritoActual => {
             const itemExistente = carritoActual.find(item => item.id === producto.id);
             if (itemExistente) {
                 if (itemExistente.quantity >= producto.stock) {
-                    alert('No puedes agregar más unidades.');
+                    toast.warning('No puedes agregar más unidades de este producto.');
                     return carritoActual;
                 }
                 return carritoActual.map(item => item.id === producto.id ? { ...item, quantity: item.quantity + 1 } : item);
@@ -95,7 +58,7 @@ const PuntoDeVenta = ({ productosActivos, metodosDePago, onVentaCompleta }) => {
                 return carritoActual.filter(item => item.id !== productoId);
             }
             if (nuevaCantidad > itemAjustar.stock) {
-                alert(`Stock máximo (${itemAjustar.stock}) alcanzado para "${itemAjustar.name}".`);
+                toast.warning(`Stock máximo (${itemAjustar.stock}) alcanzado para "${itemAjustar.name}".`);
                 return carritoActual.map(item => item.id === productoId ? { ...item, quantity: itemAjustar.stock } : item);
             }
             return carritoActual.map(item => item.id === productoId ? { ...item, quantity: nuevaCantidad } : item);
@@ -103,10 +66,38 @@ const PuntoDeVenta = ({ productosActivos, metodosDePago, onVentaCompleta }) => {
     };
 
     const limpiarVenta = () => {
-        if (carrito.length > 0 && window.confirm("¿Estás seguro de que quieres limpiar la venta actual? Se vaciará el carrito.")) {
-            setCarrito([]);
-            setTerminoBusqueda('');
+        if (carrito.length === 0) return;
+        
+        toast("Limpiar Venta", {
+            description: "¿Estás seguro de que quieres limpiar la venta actual? Se vaciará el carrito.",
+            action: {
+                label: "Sí, limpiar",
+                onClick: () => {
+                    setCarrito([]);
+                    setTerminoBusqueda('');
+                    toast.success("Venta limpiada.");
+                }
+            },
+            cancel: {
+                label: "No"
+            },
+        });
+    };
+    
+    const procesarPago = () => {
+        if (carrito.length === 0) { 
+            toast.error("El carrito está vacío."); 
+            return; 
         }
+        if (!idMetodoPagoSeleccionado) { 
+            toast.error("Por favor, selecciona un método de pago."); 
+            return; 
+        }
+        onVentaCompleta(carrito, subtotal, idMetodoPagoSeleccionado);
+        setCarrito([]); 
+        setTerminoBusqueda(''); 
+        setModalPagoAbierto(false); 
+        setEfectivoRecibido(0);
     };
     
     const subtotal = useMemo(() => carrito.reduce((sum, item) => sum + item.price * (item.quantity || 0), 0), [carrito]);
@@ -114,13 +105,6 @@ const PuntoDeVenta = ({ productosActivos, metodosDePago, onVentaCompleta }) => {
     const porcentajeAjuste = useMemo(() => metodoSeleccionado ? parseFloat(metodoSeleccionado.adjustment_percentage) : 0, [metodoSeleccionado]);
     const totalFinal = useMemo(() => subtotal * (1 + porcentajeAjuste / 100), [subtotal, porcentajeAjuste]);
     const vuelto = useMemo(() => efectivoRecibido > totalFinal ? efectivoRecibido - totalFinal : 0, [efectivoRecibido, totalFinal]);
-
-    const procesarPago = () => {
-        if (carrito.length === 0) { alert("El carrito está vacío."); return; }
-        if (!idMetodoPagoSeleccionado) { alert("Por favor, selecciona un método de pago."); return; }
-        onVentaCompleta(carrito, subtotal, idMetodoPagoSeleccionado);
-        setCarrito([]); setTerminoBusqueda(''); setModalPagoAbierto(false); setEfectivoRecibido(0);
-    };
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-100px)]">
@@ -130,19 +114,27 @@ const PuntoDeVenta = ({ productosActivos, metodosDePago, onVentaCompleta }) => {
                     <input type="text" placeholder="Buscar producto por nombre o SKU..." className="w-full pl-10 pr-4 py-3 border rounded-lg text-lg" value={terminoBusqueda} onChange={(e) => setTerminoBusqueda(e.target.value)} />
                 </div>
                 <h3 className="font-semibold text-gray-600 px-2 mb-2">{terminoBusqueda ? 'Resultados de Búsqueda' : 'Productos Populares'}</h3>
+
                 <div className="flex-grow overflow-y-auto pr-2">
-                    {productosEnPantalla.map(producto => (
-                        <div key={producto.id} onClick={() => agregarACarrito(producto)} className={`flex justify-between items-center p-3 mb-2 rounded-lg border-b text-left ${producto.stock > 0 ? 'cursor-pointer hover:bg-indigo-100 bg-white' : 'bg-gray-200 opacity-60'}`}>
-                            <div>
-                                <p className="font-bold text-gray-800">{producto.name}</p>
-                                <p className={`text-xs ${producto.stock <= 5 ? 'text-red-500 font-semibold' : 'text-gray-500'}`}>Stock: {producto.stock}</p>
+                    {productosEnPantalla.length > 0 ? (
+                        productosEnPantalla.map(producto => (
+                            <div key={producto.id} onClick={() => agregarACarrito(producto)} className={`flex justify-between items-center p-3 mb-2 rounded-lg border-b text-left ${producto.stock > 0 ? 'cursor-pointer hover:bg-indigo-100 bg-white' : 'bg-gray-200 opacity-60'}`}>
+                                <div>
+                                    <p className="font-bold text-gray-800">{producto.name}</p>
+                                    <p className={`text-xs ${producto.stock <= 5 ? 'text-red-500 font-semibold' : 'text-gray-500'}`}>Stock: {producto.stock}</p>
+                                </div>
+                                <p className="text-lg font-semibold text-gray-900">${parseFloat(producto.sale_price).toFixed(2)}</p>
                             </div>
-                            <p className="text-lg font-semibold text-gray-900">${parseFloat(producto.sale_price).toFixed(2)}</p>
+                        ))
+                    ) : (
+                        <div className="text-center py-16 px-6">
+                            <h3 className="text-lg font-semibold text-gray-700">No se encontraron productos</h3>
+                            {terminoBusqueda && <p className="text-gray-500 mt-1">Intenta con otro término de búsqueda.</p>}
                         </div>
-                    ))}
+                    )}
                 </div>
             </div>
-            {/* ... (El resto del JSX del componente no cambia) ... */}
+
             <Card className="flex flex-col">
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2"><ShoppingCart size={24}/> Venta Actual</h2>
@@ -176,6 +168,7 @@ const PuntoDeVenta = ({ productosActivos, metodosDePago, onVentaCompleta }) => {
                     <Button onClick={() => setModalPagoAbierto(true)} className="w-full text-lg" variant="success" icon={CheckCircle} disabled={carrito.length === 0}>Cobrar</Button>
                 </div>
             </Card>
+
             <Modal isOpen={modalPagoAbierto} onClose={() => setModalPagoAbierto(false)} title="Procesar Pago">
                 <div className="space-y-4">
                     <div className="text-right text-lg">Subtotal: ${subtotal.toFixed(2)}</div>

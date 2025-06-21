@@ -17,23 +17,22 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
 class ProviderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Provider
-        fields = '__all__'
+        fields = ['id', 'name', 'contact_person', 'phone_number', 'email', 'is_active']
 
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
-        # CORRECCIÓN: Aseguramos que los campos estén explícitos y correctos
         fields = ['id', 'name', 'is_active']
 
 class ClientSerializer(serializers.ModelSerializer):
     class Meta:
         model = Client
-        fields = '__all__'
+        fields = ['id', 'name', 'email', 'phone_number', 'birthday', 'is_active']
 
 class GroupSerializer(serializers.ModelSerializer):
     class Meta:
         model = Group
-        fields = ["name"]
+        fields = ["id", "name"]
 
 class CashCountSerializer(serializers.ModelSerializer):
     user = serializers.StringRelatedField()
@@ -46,21 +45,17 @@ class PaymentMethodSerializer(serializers.ModelSerializer):
         model = PaymentMethod
         fields = '__all__'
 
-# --- INICIO DE LA CORRECCIÓN PRINCIPAL ---
 class ProductSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
     provider_name = serializers.CharField(source='provider.name', read_only=True, allow_null=True)
     
-    # Este es el cambio que hicimos para que solo se puedan seleccionar categorías activas
     category = serializers.PrimaryKeyRelatedField(queryset=Category.objects.filter(is_active=True), allow_null=True)
     
-    provider = serializers.PrimaryKeyRelatedField(queryset=Provider.objects.all(), allow_null=True, required=False)
+    provider = serializers.PrimaryKeyRelatedField(queryset=Provider.objects.filter(is_active=True), allow_null=True, required=False)
     
-    # Este es el bloque Meta que se había perdido
     class Meta:
         model = Product
         fields = ['id', 'sku', 'name', 'description', 'cost_price', 'sale_price', 'stock', 'category', 'provider', 'category_name', 'provider_name', 'estado']
-# --- FIN DE LA CORRECCIÓN PRINCIPAL ---
 
 class SaleDetailWriteSerializer(serializers.ModelSerializer):
     product_id = serializers.IntegerField()
@@ -76,23 +71,46 @@ class SaleWriteSerializer(serializers.ModelSerializer):
         fields = ['total_amount', 'details', 'user', 'client', 'payment_method_id']
 
 class UserSerializer(serializers.ModelSerializer):
-    groups = serializers.SlugRelatedField(many=True, queryset=Group.objects.all(), slug_field='name')
+    groups = serializers.PrimaryKeyRelatedField(many=True, queryset=Group.objects.all())
     class Meta:
         model = User
-        fields = ['id', 'username', 'groups', 'password']
-        extra_kwargs = {'password': {'write_only': True}}
-        
+        fields = ['id', 'username', 'email', 'groups', 'password']
+        extra_kwargs = {
+            'password': {'write_only': True, 'required': False},
+            'email': {'required': False, 'allow_blank': True}
+        }
+
     def create(self, validated_data):
+        # La lógica de creación necesita la contraseña.
+        if 'password' not in validated_data:
+            raise serializers.ValidationError({"password": "Este campo es requerido al crear un usuario."})
+        
         groups = validated_data.pop('groups')
-        password = validated_data.pop('password')
-        user = User.objects.create(**validated_data)
-        user.set_password(password)
+        user = User.objects.create_user(**validated_data) # Usamos create_user para hashear la contraseña
         user.groups.set(groups)
-        user.save()
         return user
 
+    def update(self, instance, validated_data):
+        # En la actualización, la contraseña es opcional.
+        groups = validated_data.pop('groups', None)
+        
+        # Actualizamos los campos normales
+        instance.username = validated_data.get('username', instance.username)
+        instance.email = validated_data.get('email', instance.email)
+        
+        # Si se proporcionó una nueva contraseña, la actualizamos.
+        if 'password' in validated_data:
+            instance.set_password(validated_data['password'])
+        
+        instance.save()
+
+        # Si se proporcionaron grupos, los actualizamos.
+        if groups is not None:
+            instance.groups.set(groups)
+            
+        return instance
+
 class SaleDetailReadSerializer(serializers.ModelSerializer):
-    # Esta es una de las razones por las que fallaba todo: SaleDetailReadSerializer usa ProductSerializer
     product = ProductSerializer(read_only=True) 
     
     class Meta:

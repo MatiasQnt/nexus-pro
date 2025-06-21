@@ -3,16 +3,15 @@ import { Archive } from 'lucide-react';
 import { ContextoAuth } from '../../context/AuthContext';
 import { Button, Card, Table } from '../../components/ui/ComponentesUI';
 import { useFiltrosYBusqueda } from '../../hooks/useFiltrosYBusqueda';
+import { toast } from 'sonner';
 
 const API_URL = 'http://127.0.0.1:8000/api';
 
 // --- COMPONENTES Y LÓGICA DE FILTRADO ---
-
 const FiltrosHistorial = ({ setFiltros, filtros, resetFiltros }) => {
     const handleDateChange = (e) => {
         setFiltros(prev => ({ ...prev, [e.target.name]: e.target.value }));
     };
-
     return (
         <div className="flex flex-wrap items-end gap-4 mb-4 p-4 bg-gray-50 rounded-lg">
             <div className="flex-grow">
@@ -27,11 +26,9 @@ const FiltrosHistorial = ({ setFiltros, filtros, resetFiltros }) => {
         </div>
     );
 };
-
 const logicaFiltroHistorial = (historial, filtros) => {
     const { fechaDesde, fechaHasta } = filtros;
     if (!fechaDesde && !fechaHasta) return historial;
-
     return historial.filter(cierre => {
         const fechaCierre = new Date(cierre.date);
         fechaCierre.setMinutes(fechaCierre.getMinutes() + fechaCierre.getTimezoneOffset());
@@ -43,9 +40,7 @@ const logicaFiltroHistorial = (historial, filtros) => {
     });
 };
 
-
 // --- COMPONENTE PRINCIPAL ---
-
 const CierreCaja = () => {
     const [datos, setDatos] = useState(null);
     const [cargando, setCargando] = useState(true);
@@ -61,7 +56,6 @@ const CierreCaja = () => {
         filtrosIniciales: { fechaDesde: '', fechaHasta: '' }
     });
 
-    // CORRECCIÓN: Se restauró la lógica completa de esta función.
     const obtenerDatos = useCallback(async () => {
         if (!tokensAuth) return;
         setCargando(true);
@@ -69,7 +63,6 @@ const CierreCaja = () => {
         try {
             const response = await fetch(`${API_URL}/cash-count/`, { headers: { 'Authorization': 'Bearer ' + String(tokensAuth.access) } });
             const responseData = await response.json();
-
             if (!response.ok) {
                  if (response.status === 409) {
                      setError(responseData.message);
@@ -93,25 +86,31 @@ const CierreCaja = () => {
 
     const guardarCierre = async () => {
         if(montoContado === '' || isNaN(parseFloat(montoContado))) {
-            alert("Por favor, ingresa un monto contado válido.");
+            toast.error("Por favor, ingresa un monto contado válido.");
             return;
         }
-        try {
-            const response = await fetch(`${API_URL}/cash-count/`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + String(tokensAuth.access) },
-                body: JSON.stringify({
-                    counted_amount: parseFloat(montoContado),
-                    expected_amount: datos.expected_amount
-                })
-            });
-            if (!response.ok) { throw new Error('No se pudo guardar el cierre.'); }
-            alert('¡Cierre de caja guardado con éxito!');
-            setMontoContado('');
-            obtenerDatos();
-        } catch (err) {
-            alert(`Error: ${err.message}`);
-        }
+
+        const promesa = fetch(`${API_URL}/cash-count/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + String(tokensAuth.access) },
+            body: JSON.stringify({
+                counted_amount: parseFloat(montoContado),
+                expected_amount: datos.expected_amount
+            })
+        }).then(res => {
+            if (!res.ok) return res.json().then(err => Promise.reject(err));
+            return res.json();
+        });
+
+        toast.promise(promesa, {
+            loading: 'Guardando cierre de caja...',
+            success: (data) => {
+                setMontoContado('');
+                obtenerDatos();
+                return data.message || '¡Cierre de caja guardado con éxito!';
+            },
+            error: (err) => `Error: ${err.message || 'No se pudo guardar el cierre.'}`
+        });
     };
     
     const diferencia = datos?.expected_amount != null && montoContado !== '' ? parseFloat(montoContado) - datos.expected_amount : null;
@@ -144,7 +143,7 @@ const CierreCaja = () => {
                                  className="w-full p-3 text-2xl text-center border-2 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
                              />
                         </div>
-                         <div className={`text-center p-4 rounded-lg ${diferencia === null ? 'bg-gray-100' : diferencia === 0 ? 'bg-green-100' : 'bg-red-100'}`}>
+                        <div className={`text-center p-4 rounded-lg ${diferencia === null ? 'bg-gray-100' : diferencia === 0 ? 'bg-green-100' : 'bg-red-100'}`}>
                             <h3 className={`text-sm font-semibold uppercase ${diferencia === null ? 'text-gray-800' : diferencia === 0 ? 'text-green-800' : 'text-red-800'}`}>Diferencia</h3>
                             <p className={`text-4xl font-bold ${diferencia === null ? 'text-gray-900' : diferencia === 0 ? 'text-green-900' : 'text-red-900'}`}>{diferencia !== null ? `$${diferencia.toFixed(2)}` : '-'}</p>
                         </div>
@@ -158,22 +157,32 @@ const CierreCaja = () => {
             <div>
                  <h2 className="text-xl font-bold text-gray-700 mb-4">Historial de Cierres</h2>
                  {FiltrosUI}
-                 <Table
-                    headers={['Fecha', 'Monto Esperado', 'Monto Contado', 'Diferencia', 'Usuario']}
-                    data={datosPaginados}
-                    renderRow={(c) => (
-                        <tr key={c.id} className="bg-white border-b hover:bg-gray-50">
-                            <td className="px-6 py-4">{new Date(c.date + 'T00:00:00').toLocaleDateString('es-AR')}</td>
-                            <td className="px-6 py-4">${parseFloat(c.expected_amount).toFixed(2)}</td>
-                            <td className="px-6 py-4">${parseFloat(c.counted_amount).toFixed(2)}</td>
-                            <td className={`px-6 py-4 font-bold ${c.difference > 0 ? 'text-green-600' : c.difference < 0 ? 'text-red-600' : 'text-gray-800'}`}>
-                                {c.difference >= 0 ? `+${parseFloat(c.difference).toFixed(2)}` : parseFloat(c.difference).toFixed(2)}
-                            </td>
-                            <td className="px-6 py-4">{c.user}</td>
-                        </tr>
-                    )}
-                 />
-                 {PaginacionUI}
+                 
+                 {datosPaginados.length > 0 ? (
+                    <>
+                        <Table
+                            headers={['Fecha', 'Monto Esperado', 'Monto Contado', 'Diferencia', 'Usuario']}
+                            data={datosPaginados}
+                            renderRow={(c) => (
+                                <tr key={c.id} className="bg-white border-b hover:bg-gray-50">
+                                    <td className="px-6 py-4">{new Date(c.date + 'T00:00:00').toLocaleDateString('es-AR')}</td>
+                                    <td className="px-6 py-4">${parseFloat(c.expected_amount).toFixed(2)}</td>
+                                    <td className="px-6 py-4">${parseFloat(c.counted_amount).toFixed(2)}</td>
+                                    <td className={`px-6 py-4 font-bold ${c.difference > 0 ? 'text-green-600' : c.difference < 0 ? 'text-red-600' : 'text-gray-800'}`}>
+                                        {c.difference > 0 ? `+${parseFloat(c.difference).toFixed(2)}` : parseFloat(c.difference).toFixed(2)}
+                                    </td>
+                                    <td className="px-6 py-4">{c.user}</td>
+                                </tr>
+                            )}
+                        />
+                        {PaginacionUI}
+                    </>
+                 ) : (
+                    <div className="text-center py-16 px-6 bg-white rounded-lg shadow">
+                        <h3 className="text-lg font-semibold text-gray-700">No se encontraron cierres de caja</h3>
+                        <p className="text-gray-500 mt-1">Intenta ajustar el rango de fechas para encontrar resultados.</p>
+                    </div>
+                 )}
             </div>
         </div>
     );

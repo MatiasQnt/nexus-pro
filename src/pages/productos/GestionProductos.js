@@ -3,25 +3,20 @@
 import React, { useState, useContext } from 'react';
 import { PlusCircle, Edit, Trash2, PackagePlus } from 'lucide-react';
 import { ContextoAuth } from '../../context/AuthContext';
-import { Button, Modal, Table, Badge } from '../../components/ui/ComponentesUI'; // Asumo que tienes un componente Badge
+import { Button, Modal, Table } from '../../components/ui/ComponentesUI';
 import { useFiltrosYBusqueda } from '../../hooks/useFiltrosYBusqueda';
+import { toast } from 'sonner';
 
 const API_URL = 'http://127.0.0.1:8000/api';
 
-// --- COMPONENTES INTERNOS ---
-
-// Formulario completo para crear/editar
 const FormularioProducto = ({ producto, onGuardar, onCancelar, categorias, proveedores }) => {
-    // --- INICIO DE CAMBIOS ---
-    // CAMBIO: Estado inicial del formulario ahora incluye 'estado'
     const [formData, setFormData] = useState({ 
         ...producto, 
         category: producto.category || '', 
         provider: producto.provider || null,
-        estado: producto.estado || 'activo' // Aseguramos que 'estado' tenga un valor
+        estado: producto.estado || 'activo'
     });
     
-    // CAMBIO: Un solo handleChange para todos los inputs
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
         if (name === 'estado') {
@@ -30,11 +25,9 @@ const FormularioProducto = ({ producto, onGuardar, onCancelar, categorias, prove
             setFormData(prev => ({ ...prev, [name]: value }));
         }
     };
-    // --- FIN DE CAMBIOS ---
 
     return (
         <form onSubmit={(e) => { e.preventDefault(); onGuardar(formData); }} className="space-y-4">
-            {/* ... (inputs de nombre y sku no cambian) ... */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">Nombre del Producto</label>
@@ -66,7 +59,7 @@ const FormularioProducto = ({ producto, onGuardar, onCancelar, categorias, prove
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
-                    <select id="category" name="category" value={formData.category} onChange={handleChange} className="p-2 border rounded-lg w-full" required>
+                    <select id="category" name="category" value={formData.category || ''} onChange={handleChange} className="p-2 border rounded-lg w-full" required>
                         <option value="">Seleccionar Categoría</option>
                         {categorias.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
@@ -79,9 +72,6 @@ const FormularioProducto = ({ producto, onGuardar, onCancelar, categorias, prove
                     </select>
                 </div>
             </div>
-
-            {/* --- INICIO DE CAMBIOS --- */}
-            {/* CAMBIO: Checkbox para el estado del producto */}
             <div className="flex items-center gap-2 mt-4">
                  <input
                     id="estado"
@@ -93,8 +83,6 @@ const FormularioProducto = ({ producto, onGuardar, onCancelar, categorias, prove
                 />
                 <label htmlFor="estado" className="text-sm font-medium text-gray-700">Activo</label>
             </div>
-            {/* --- FIN DE CAMBIOS --- */}
-
             <div className="flex justify-end gap-3 pt-4">
                 <Button type="button" onClick={onCancelar} variant="secondary">Cancelar</Button>
                 <Button type="submit" variant="primary">Guardar</Button>
@@ -102,9 +90,6 @@ const FormularioProducto = ({ producto, onGuardar, onCancelar, categorias, prove
         </form>
     );
 };
-
-
-// ... (El componente FormularioStock no cambia) ...
 const FormularioStock = ({ onGuardar, onCancelar }) => {
     const [stockToAdd, setStockToAdd] = useState(1);
     const handleSubmit = (e) => { e.preventDefault(); onGuardar({ stock: stockToAdd }); };
@@ -121,9 +106,6 @@ const FormularioStock = ({ onGuardar, onCancelar }) => {
         </form>
     );
 };
-
-
-// ... (El componente FiltroBusquedaProducto y logicaFiltroProductos no cambian) ...
 const FiltroBusquedaProducto = ({ setFiltros, filtros }) => {
     const handleBusquedaChange = (e) => setFiltros({ ...filtros, busqueda: e.target.value });
     return (
@@ -143,14 +125,11 @@ const logicaFiltroProductos = (productos, filtros) => {
     );
 };
 
-
 // --- COMPONENTE PRINCIPAL ---
-
 const GestionProductos = ({ productos, proveedores, categorias, obtenerDatos, roles }) => {
     const [modalAbierto, setModalAbierto] = useState(false);
     const [stockModalAbierto, setStockModalAbierto] = useState(false);
     const [productoSeleccionado, setProductoSeleccionado] = useState(null);
-    
     const { tokensAuth } = useContext(ContextoAuth);
     const puedeGestionar = roles?.esAdmin || roles?.esSuperAdmin;
 
@@ -163,15 +142,10 @@ const GestionProductos = ({ productos, proveedores, categorias, obtenerDatos, ro
     });
 
     const abrirModalNuevo = () => { 
-        // --- INICIO DE CAMBIOS ---
-        // CAMBIO: Valores por defecto para un producto nuevo
         setProductoSeleccionado({ 
             name: '', sku: '', description: '', cost_price: '', sale_price: '', 
-            stock: 1, // Stock inicial 1
-            category: '', provider: null, 
-            estado: 'activo' // Estado inicial 'activo'
+            stock: 1, category: '', provider: null, estado: 'activo'
         });
-        // --- FIN DE CAMBIOS ---
         setModalAbierto(true); 
     };
     
@@ -189,67 +163,82 @@ const GestionProductos = ({ productos, proveedores, categorias, obtenerDatos, ro
         const esEditando = !!datosProducto.id;
         const url = esEditando ? `${API_URL}/products/${datosProducto.id}/` : `${API_URL}/products/`;
         const method = esEditando ? 'PUT' : 'POST';
-        
         const payload = { ...datosProducto };
         delete payload.provider_name;
         delete payload.category_name;
         if (payload.provider === '') payload.provider = null;
         
-        try {
-            const response = await fetch(url, { method, headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + String(tokensAuth.access) }, body: JSON.stringify(payload) });
-            if (!response.ok) { const errorData = await response.json(); throw new Error(JSON.stringify(errorData)); }
-            alert(`Producto ${esEditando ? 'actualizado' : 'creado'}.`); 
-            setModalAbierto(false); 
-            obtenerDatos();
-        } catch (err) { alert(`Error: ${err.message}`); }
+        const promesaDeGuardado = fetch(url, { method, headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + String(tokensAuth.access) }, body: JSON.stringify(payload) })
+            .then(res => {
+                if (!res.ok) return res.json().then(err => Promise.reject(err));
+                return res.json();
+            });
+
+        toast.promise(promesaDeGuardado, {
+            loading: 'Guardando producto...',
+            success: () => {
+                setModalAbierto(false);
+                obtenerDatos();
+                return `Producto ${esEditando ? 'actualizado' : 'creado'} con éxito.`;
+            },
+            error: (err) => `Error al guardar: ${JSON.stringify(err)}`
+        });
     };
 
     const guardarStock = async (datosStock) => {
         if (!productoSeleccionado) return;
         const url = `${API_URL}/products/${productoSeleccionado.id}/update-stock/`;
-        try {
-            const response = await fetch(url, { 
-                method: 'PATCH', 
-                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + String(tokensAuth.access) }, 
-                body: JSON.stringify({ stock: datosStock.stock }) 
-            });
-            if (!response.ok) { const errorData = await response.json(); throw new Error(JSON.stringify(errorData)); }
-            alert(`Stock añadido.`);
-            setStockModalAbierto(false);
-            obtenerDatos();
-        } catch (err) {
-            alert(`Error: ${err.message}`);
-        }
+        
+        const promesaDeStock = fetch(url, { 
+            method: 'PATCH', 
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + String(tokensAuth.access) }, 
+            body: JSON.stringify({ stock: datosStock.stock }) 
+        }).then(res => {
+            if (!res.ok) return res.json().then(err => Promise.reject(err));
+            return res.json();
+        });
+
+        toast.promise(promesaDeStock, {
+            loading: 'Añadiendo stock...',
+            success: () => {
+                setStockModalAbierto(false);
+                obtenerDatos();
+                return 'Stock añadido con éxito.';
+            },
+            error: (err) => `Error: ${JSON.stringify(err)}`
+        });
     };
 
     const borrarProducto = async (idProducto) => {
-        if (window.confirm("¿Estás seguro de que quieres eliminar este producto?")) {
+        const promesaDeBorrado = new Promise(async (resolve, reject) => {
             try {
-                // --- INICIO DE CAMBIOS ---
-                // CAMBIO: Lógica para manejar la nueva respuesta de la API (200 OK o 204 No Content)
                 const response = await fetch(`${API_URL}/products/${idProducto}/`, { 
                     method: 'DELETE', 
                     headers: { 'Authorization': 'Bearer ' + String(tokensAuth.access) }
                 });
 
                 if (response.status === 204) {
-                    // Eliminación física exitosa
-                    alert('Producto eliminado con éxito.');
+                    resolve("Producto eliminado con éxito.");
                 } else if (response.ok) {
-                    // Desactivación exitosa (soft-delete)
                     const data = await response.json();
-                    alert(data.detail); // Muestra el mensaje del backend
+                    resolve(data.detail);
                 } else {
-                    // Otro tipo de error
                     const errorData = await response.json();
-                    throw new Error(JSON.stringify(errorData));
+                    reject(new Error(JSON.stringify(errorData)));
                 }
-                obtenerDatos();
-                // --- FIN DE CAMBIOS ---
-            } catch (err) { 
-                alert(`Error al intentar eliminar: ${err.message}`); 
+            } catch (err) {
+                reject(err);
             }
-        }
+        });
+
+        toast.promise(promesaDeBorrado, {
+            loading: 'Eliminando producto...',
+            success: (mensaje) => {
+                obtenerDatos();
+                return mensaje;
+            },
+            error: (err) => `Error al eliminar: ${err.message}`
+        });
     };
 
     return (
@@ -263,47 +252,51 @@ const GestionProductos = ({ productos, proveedores, categorias, obtenerDatos, ro
             
             {FiltrosUI}
 
-            {/* --- INICIO DE CAMBIOS --- */}
-            {/* CAMBIO: Se añaden 'Proveedor' y 'Estado' a los encabezados de la tabla */}
-            <Table 
-                headers={['SKU', 'Nombre', 'Precio Venta', 'Stock', 'Categoría', 'Proveedor', 'Estado', 'Acciones']} 
-                data={datosPaginados} 
-                renderRow={(p) => (
-                    <tr key={p.id} className={`border-b hover:bg-gray-50 ${p.estado === 'inactivo' ? 'bg-gray-100 text-gray-500' : 'bg-white'}`}>
-                        <td className="px-6 py-4">{p.sku}</td>
-                        <td className="px-6 py-4 font-medium">{p.name}</td>
-                        <td className="px-6 py-4">${parseFloat(p.sale_price).toFixed(2)}</td>
-                        <td className="px-6 py-4">
-                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${p.stock <= 5 ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
-                                {p.stock}
-                            </span>
-                        </td>
-                        <td className="px-6 py-4">{p.category_name}</td>
-                        {/* CAMBIO: Se añade la celda del proveedor */}
-                        <td className="px-6 py-4">{p.provider_name || 'N/A'}</td>
-                        {/* CAMBIO: Se añade la celda de estado con un badge */}
-                        <td className="px-6 py-4">
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${p.estado === 'activo' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                                {p.estado === 'activo' ? 'Activo' : 'Inactivo'}
-                            </span>
-                        </td>
-                        <td className="px-6 py-4 flex gap-2">
-                            <Button onClick={() => abrirModalStock(p)} variant="outline" size="sm" icon={PackagePlus}>Stock</Button>
-                            {puedeGestionar && (
-                                <>
-                                    <Button onClick={() => abrirModalEditar(p)} variant="secondary" size="sm" icon={Edit} />
-                                    <Button onClick={() => borrarProducto(p.id)} variant="danger" size="sm" icon={Trash2} />
-                                </>
-                            )}
-                        </td>
-                    </tr>
-                )}
-            />
-            {/* --- FIN DE CAMBIOS --- */}
+            {/* Lógica para mostrar tabla o mensaje de "no resultados" */}
+            {datosPaginados.length > 0 ? (
+                <>
+                    <Table 
+                        headers={['SKU', 'Nombre', 'Precio Costo', 'Precio Venta', 'Stock', 'Categoría', 'Proveedor', 'Estado', 'Acciones']} 
+                        data={datosPaginados} 
+                        renderRow={(p) => (
+                            <tr key={p.id} className={`border-b hover:bg-gray-50 ${p.estado === 'inactivo' ? 'bg-gray-100 text-gray-500' : 'bg-white'}`}>
+                                <td className="px-6 py-4">{p.sku}</td>
+                                <td className="px-6 py-4 font-medium">{p.name}</td>
+                                <td className="px-6 py-4 text-orange-600 font-medium">${parseFloat(p.cost_price).toFixed(2)}</td>
+                                <td className="px-6 py-4 text-green-600 font-bold">${parseFloat(p.sale_price).toFixed(2)}</td>
+                                <td className="px-6 py-4">
+                                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${p.stock <= 5 ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
+                                        {p.stock}
+                                    </span>
+                                </td>
+                                <td className="px-6 py-4">{p.category_name}</td>
+                                <td className="px-6 py-4">{p.provider_name || 'N/A'}</td>
+                                <td className="px-6 py-4">
+                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${p.estado === 'activo' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                        {p.estado === 'activo' ? 'Activo' : 'Inactivo'}
+                                    </span>
+                                </td>
+                                <td className="px-6 py-4 flex gap-2">
+                                    <Button onClick={() => abrirModalStock(p)} variant="outline" size="sm" icon={PackagePlus}>Stock</Button>
+                                    {puedeGestionar && (
+                                        <>
+                                            <Button onClick={() => abrirModalEditar(p)} variant="secondary" size="sm" icon={Edit} />
+                                            <Button onClick={() => borrarProducto(p.id)} variant="danger" size="sm" icon={Trash2} />
+                                        </>
+                                    )}
+                                </td>
+                            </tr>
+                        )}
+                    />
+                    {PaginacionUI}
+                </>
+            ) : (
+                <div className="text-center py-16 px-6 bg-white rounded-lg shadow">
+                    <h3 className="text-lg font-semibold text-gray-700">No se encontraron productos</h3>
+                    <p className="text-gray-500 mt-1">Intenta ajustar los términos de tu búsqueda o crea un producto nuevo.</p>
+                </div>
+            )}
 
-            {PaginacionUI}
-
-            {/* ... (Los modales no cambian su estructura, solo el contenido del formulario que ya fue modificado) ... */}
             {puedeGestionar && (
                 <Modal isOpen={modalAbierto} onClose={() => setModalAbierto(false)} title={productoSeleccionado?.id ? 'Editar Producto' : 'Nuevo Producto'}>
                     {productoSeleccionado && <FormularioProducto producto={productoSeleccionado} onGuardar={guardarProducto} onCancelar={() => setModalAbierto(false)} categorias={categorias} proveedores={proveedores}/>}

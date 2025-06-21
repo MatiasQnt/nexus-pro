@@ -2,18 +2,13 @@ import React, { useState, useContext, useEffect } from 'react';
 import { PlusCircle, Edit, Trash2, KeyRound } from 'lucide-react';
 import { ContextoAuth } from '../../context/AuthContext';
 import { Button, Modal, Table } from '../../components/ui/ComponentesUI';
+import { toast } from 'sonner';
 
 const API_URL = 'http://127.0.0.1:8000/api';
 
-/**
- * Formulario para crear o editar la información básica de un usuario.
- */
 const FormularioUsuario = ({ usuario, onGuardar, onCancelar, grupos }) => {
     const [formData, setFormData] = useState({
-        username: '',
-        email: '',
-        password: '',
-        groups: []
+        username: '', email: '', password: '', groups: []
     });
 
     useEffect(() => {
@@ -21,8 +16,8 @@ const FormularioUsuario = ({ usuario, onGuardar, onCancelar, grupos }) => {
             setFormData({
                 username: usuario.username || '',
                 email: usuario.email || '',
-                password: '', // La contraseña siempre se deja en blanco al editar para no mostrarla.
-                groups: usuario.groups || []
+                password: '',
+                groups: (usuario.groups || []).map(id => String(id)) 
             });
         }
     }, [usuario]);
@@ -33,7 +28,7 @@ const FormularioUsuario = ({ usuario, onGuardar, onCancelar, grupos }) => {
     };
 
     const handleGroupChange = (e) => {
-        const selectedOptions = Array.from(e.target.selectedOptions, option => parseInt(option.value));
+        const selectedOptions = Array.from(e.target.selectedOptions, option => option.value);
         setFormData(prev => ({ ...prev, groups: selectedOptions }));
     };
 
@@ -49,10 +44,10 @@ const FormularioUsuario = ({ usuario, onGuardar, onCancelar, grupos }) => {
                 <input type="text" name="username" value={formData.username} onChange={handleChange} className="p-2 border rounded-lg w-full" required />
             </div>
             <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input type="email" name="email" value={formData.email} onChange={handleChange} className="p-2 border rounded-lg w-full" required />
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email (Opcional)</label>
+                <input type="email" name="email" value={formData.email} onChange={handleChange} className="p-2 border rounded-lg w-full" />
             </div>
-            {!usuario.id && ( // Solo mostrar el campo de contraseña al crear un nuevo usuario.
+            {!usuario.id && (
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
                     <input type="password" name="password" value={formData.password} onChange={handleChange} className="p-2 border rounded-lg w-full" required />
@@ -72,23 +67,14 @@ const FormularioUsuario = ({ usuario, onGuardar, onCancelar, grupos }) => {
     );
 };
 
-/**
- * Formulario específico para que el SuperAdmin establezca una nueva contraseña.
- */
 const FormularioReseteoClave = ({ onGuardar, onCancelar }) => {
     const [nuevaClave, setNuevaClave] = useState('');
     const [confirmarClave, setConfirmarClave] = useState('');
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        if (nuevaClave !== confirmarClave) {
-            alert("Las contraseñas no coinciden.");
-            return;
-        }
-        if (nuevaClave.length < 8) {
-            alert("La contraseña debe tener al menos 8 caracteres.");
-            return;
-        }
+        if (nuevaClave !== confirmarClave) { toast.error("Las contraseñas no coinciden."); return; }
+        if (nuevaClave.length < 8) { toast.error("La contraseña debe tener al menos 8 caracteres."); return; }
         onGuardar(nuevaClave);
     };
 
@@ -110,81 +96,102 @@ const FormularioReseteoClave = ({ onGuardar, onCancelar }) => {
     );
 };
 
-
 const GestionUsuarios = ({ usuarios, grupos, obtenerDatos }) => {
     const [modalAbierto, setModalAbierto] = useState(false);
     const [resetModalAbierto, setResetModalAbierto] = useState(false);
     const [usuarioSeleccionado, setUsuarioSeleccionado] = useState(null);
-    const { tokensAuth } = useContext(ContextoAuth);
+    const { tokensAuth, usuario: usuarioActual } = useContext(ContextoAuth);
 
-    const abrirModalNuevo = () => {
-        setUsuarioSeleccionado({});
-        setModalAbierto(true);
-    };
-
-    const abrirModalEditar = (usuario) => {
-        setUsuarioSeleccionado(usuario);
-        setModalAbierto(true);
-    };
-
-    const abrirModalReseteo = (usuario) => {
-        setUsuarioSeleccionado(usuario);
-        setResetModalAbierto(true);
-    };
-    
-    const cerrarModales = () => {
-        setModalAbierto(false);
-        setResetModalAbierto(false);
-        setUsuarioSeleccionado(null);
-    };
+    const abrirModalNuevo = () => { setUsuarioSeleccionado({}); setModalAbierto(true); };
+    const abrirModalEditar = (usuario) => { setUsuarioSeleccionado(usuario); setModalAbierto(true); };
+    const abrirModalReseteo = (usuario) => { setUsuarioSeleccionado(usuario); setResetModalAbierto(true); };
+    const cerrarModales = () => { setModalAbierto(false); setResetModalAbierto(false); setUsuarioSeleccionado(null); };
 
     const guardarUsuario = async (datosUsuario) => {
         const esEditando = !!usuarioSeleccionado.id;
         const url = esEditando ? `${API_URL}/users/${usuarioSeleccionado.id}/` : `${API_URL}/users/`;
         const method = esEditando ? 'PUT' : 'POST';
         
-        try {
-            const response = await fetch(url, { method, headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + String(tokensAuth.access) }, body: JSON.stringify(datosUsuario) });
-            if (!response.ok) { const errorData = await response.json(); throw new Error(JSON.stringify(errorData)); }
-            alert(`Usuario ${esEditando ? 'actualizado' : 'creado'}.`);
-            cerrarModales();
-            obtenerDatos();
-        } catch (err) { alert(`Error: ${err.message}`); }
-    };
-    
-    const borrarUsuario = async (idUsuario) => {
-        if (window.confirm("¿Estás seguro de que quieres eliminar este usuario?")) {
-            try {
-                await fetch(`${API_URL}/users/${idUsuario}/`, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + String(tokensAuth.access) }});
-                alert('Usuario eliminado.');
-                obtenerDatos();
-            } catch (err) { alert(`Error: ${err.message}`); }
+        const payload = { ...datosUsuario };
+        if (esEditando && !payload.password) {
+            delete payload.password;
         }
+        payload.groups = datosUsuario.groups.map(id => parseInt(id, 10)).filter(id => !isNaN(id));
+
+        toast.promise(
+            fetch(url, { method, headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + String(tokensAuth.access) }, body: JSON.stringify(payload) })
+                .then(res => {
+                    if (!res.ok) return res.json().then(err => Promise.reject(err));
+                    if (res.status === 204) return;
+                    return res.json();
+                }),
+            {
+                loading: 'Guardando usuario...',
+                success: () => {
+                    cerrarModales();
+                    obtenerDatos();
+                    return `Usuario ${esEditando ? 'actualizado' : 'creado'}.`;
+                },
+                error: (err) => `Error: ${JSON.stringify(err)}`
+            }
+        );
+    };
+
+    const borrarUsuario = (idUsuario, username) => {
+        if (usuarioActual?.username === username) {
+            toast.error("No puedes eliminarte a ti mismo.");
+            return;
+        }
+
+        toast("¿Seguro que quieres eliminar este usuario?", {
+            description: `Estás a punto de eliminar a ${username}. Esta acción no se puede deshacer.`,
+            action: {
+                label: "Sí, eliminar",
+                onClick: () => {
+                    const promesa = fetch(`${API_URL}/users/${idUsuario}/`, { 
+                        method: 'DELETE', 
+                        headers: { 'Authorization': 'Bearer ' + String(tokensAuth.access) }
+                    }).then(res => {
+                        if (res.status !== 204) {
+                           return res.json().then(err => Promise.reject(err));
+                        }
+                        return res;
+                    });
+
+                    toast.promise(promesa, {
+                        loading: 'Eliminando...',
+                        success: () => {
+                            obtenerDatos();
+                            return 'Usuario eliminado con éxito.';
+                        },
+                        error: (err) => `Error al eliminar: ${JSON.stringify(err)}`
+                    });
+                }
+            },
+            cancel: { label: "No" }
+        });
     };
 
     const handleReseteoClave = async (nuevaClave) => {
         if (!usuarioSeleccionado) return;
+        
+        const promesa = fetch(`${API_URL}/users/${usuarioSeleccionado.id}/set-password/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + String(tokensAuth.access) },
+            body: JSON.stringify({ password: nuevaClave })
+        }).then(res => {
+            if (!res.ok) return res.json().then(err => Promise.reject(err));
+            return res.json();
+        });
 
-        try {
-            const response = await fetch(`${API_URL}/users/${usuarioSeleccionado.id}/set-password/`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer ' + String(tokensAuth.access)
-                },
-                body: JSON.stringify({ password: nuevaClave })
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'No se pudo resetear la contraseña.');
-            }
-
-            alert(`Contraseña para ${usuarioSeleccionado.username} actualizada.`);
-            cerrarModales();
-        } catch (err) {
-            alert(`Error: ${err.message}`);
-        }
+        toast.promise(promesa, {
+            loading: 'Actualizando contraseña...',
+            success: (data) => {
+                cerrarModales();
+                return data.status || 'Contraseña actualizada.';
+            },
+            error: (err) => `Error: ${err.error || 'No se pudo resetear la contraseña.'}`
+        });
     };
 
     return (
@@ -194,22 +201,32 @@ const GestionUsuarios = ({ usuarios, grupos, obtenerDatos }) => {
                 <Button onClick={abrirModalNuevo} icon={PlusCircle}>Nuevo Usuario</Button>
             </div>
             
-            <Table 
-                headers={['Username', 'Email', 'Rol', 'Acciones']} 
-                data={usuarios}
-                renderRow={(u) => (
-                    <tr key={u.id} className="bg-white border-b hover:bg-gray-50">
-                        <td className="px-6 py-4 font-medium">{u.username}</td>
-                        <td className="px-6 py-4">{u.email}</td>
-                        <td className="px-6 py-4">{u.groups.map(id => grupos.find(g => g.id === id)?.name).join(', ')}</td>
-                        <td className="px-6 py-4 flex gap-2">
-                            <Button onClick={() => abrirModalReseteo(u)} variant="secondary" size="sm" icon={KeyRound} title="Resetear Contraseña" />
-                            <Button onClick={() => abrirModalEditar(u)} variant="secondary" size="sm" icon={Edit} />
-                            <Button onClick={() => borrarUsuario(u.id)} variant="danger" size="sm" icon={Trash2} />
-                        </td>
-                    </tr>
-                )}
-            />
+            {usuarios.length > 0 ? (
+                <Table 
+                    headers={['Username', 'Email', 'Rol', 'Acciones']} 
+                    data={usuarios}
+                    renderRow={(u) => (
+                        <tr key={u.id} className="bg-white border-b hover:bg-gray-50">
+                            <td className="px-6 py-4 font-medium">{u.username}</td>
+                            <td className="px-6 py-4">{u.email || '-'}</td>
+                            <td className="px-6 py-4">{u.groups.map(id => grupos.find(g => g.id === id)?.name).join(', ')}</td>
+                            <td className="px-6 py-4 flex gap-2">
+                                <Button onClick={() => abrirModalReseteo(u)} variant="secondary" size="sm" icon={KeyRound} title="Resetear Contraseña" />
+                                <Button onClick={() => abrirModalEditar(u)} variant="secondary" size="sm" icon={Edit} />
+                                {/* Se añade una comprobación para no mostrar el botón de borrar para el usuario actual */}
+                                {usuarioActual?.username !== u.username && (
+                                    <Button onClick={() => borrarUsuario(u.id, u.username)} variant="danger" size="sm" icon={Trash2} />
+                                )}
+                            </td>
+                        </tr>
+                    )}
+                />
+            ) : (
+                <div className="text-center py-16 px-6 bg-white rounded-lg shadow">
+                    <h3 className="text-lg font-semibold text-gray-700">No se encontraron usuarios</h3>
+                    <p className="text-gray-500 mt-1">Puedes crear un nuevo usuario para empezar.</p>
+                </div>
+            )}
             
             <Modal isOpen={modalAbierto} onClose={cerrarModales} title={usuarioSeleccionado?.id ? 'Editar Usuario' : 'Nuevo Usuario'}>
                 {usuarioSeleccionado && <FormularioUsuario usuario={usuarioSeleccionado} onGuardar={guardarUsuario} onCancelar={cerrarModales} grupos={grupos} />}

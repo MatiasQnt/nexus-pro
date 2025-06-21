@@ -144,10 +144,42 @@ class ProviderViewSet(viewsets.ModelViewSet):
     queryset = Provider.objects.all().order_by('name')
     serializer_class = ProviderSerializer
 
+    def destroy(self, request, *args, **kwargs):
+        provider = self.get_object()
+        # Verificamos si el proveedor está siendo usado por algún producto
+        if Product.objects.filter(provider=provider).exists():
+            # Si está en uso, lo desactivamos
+            provider.is_active = False
+            provider.save()
+            return Response(
+                {"detail": "Este proveedor está en uso por uno o más productos. Ha sido desactivado."},
+                status=status.HTTP_200_OK
+            )
+        else:
+            # Si no está en uso, lo eliminamos permanentemente
+            provider.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
 class ClientViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsSuperAdminOrAdmin]
     queryset = Client.objects.all().order_by('name')
     serializer_class = ClientSerializer
+
+    def destroy(self, request, *args, **kwargs):
+        client = self.get_object()
+        # Verificamos si el cliente tiene ventas asociadas
+        if Sale.objects.filter(client=client).exists():
+            # Si tiene ventas, lo desactivamos
+            client.is_active = False
+            client.save()
+            return Response(
+                {"detail": "Este cliente tiene ventas asociadas y no se puede eliminar. Ha sido desactivado."},
+                status=status.HTTP_200_OK
+            )
+        else:
+            # Si no, lo eliminamos permanentemente
+            client.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
 
 class UserViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsSuperAdminUser]

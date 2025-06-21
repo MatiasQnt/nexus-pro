@@ -2,6 +2,7 @@ import React, { useState, useEffect, useContext, useCallback, useRef } from 'rea
 import { ShoppingCart, DollarSign, Package, Truck, BarChart2, UserPlus, LogOut, Archive, UploadCloud, CreditCard, Users, ShieldCheck, User as UserIcon, LayoutGrid } from 'lucide-react';
 import { ContextoAuth } from './context/AuthContext';
 import { Button } from './components/ui/ComponentesUI';
+import { Toaster, toast } from 'sonner';
 
 import PaginaLogin from './pages/login/PaginaLogin';
 import PuntoDeVenta from './pages/pos/PuntoDeVenta';
@@ -32,13 +33,10 @@ export default function App() {
     const [vista, setVista] = useState('pos');
     const [vistaPanel, setVistaPanel] = useState('dashboard');
     
-    // --- INICIO DE CAMBIOS ---
-    // Mantenemos 'productos' para la gestión (activos e inactivos)
     const [productos, setProductos] = useState([]);
-    // NUEVO ESTADO: 'productosActivos' solo para el Punto de Venta (POS)
     const [productosActivos, setProductosActivos] = useState([]);
-    // --- FIN DE CAMBIOS ---
-
+    const [productosPopulares, setProductosPopulares] = useState([]);
+    
     const [ventas, setVentas] = useState([]);
     const [proveedores, setProveedores] = useState([]);
     const [clientes, setClientes] = useState([]);
@@ -58,8 +56,7 @@ export default function App() {
     const obtenerDatos = useCallback(async () => {
         if (!tokensAuth) return;
         
-        // El endpoint de 'products' trae TODOS los productos.
-        let endpoints = ['products', 'payment-methods'];
+        let endpoints = ['products', 'payment-methods', 'products/popular-for-pos/'];
 
         if (puedeVerPanel) {
             endpoints.push('reports/dashboard');
@@ -73,7 +70,7 @@ export default function App() {
 
         try {
             const requests = endpoints.map(endpoint => 
-                fetch(`${API_URL}/${endpoint}/`, { headers: { 'Authorization': 'Bearer ' + String(tokensAuth.access) } }).then(res => {
+                fetch(`${API_URL}/${endpoint}`, { headers: { 'Authorization': 'Bearer ' + String(tokensAuth.access) } }).then(res => {
                     if (res.status === 401) {
                         cerrarSesion();
                         return Promise.reject(new Error("Token inválido"));
@@ -89,15 +86,10 @@ export default function App() {
             const data = await Promise.all(requests);
             const dataMap = Object.fromEntries(endpoints.map((e, i) => [e, data[i]]));
 
-            // --- INICIO DE CAMBIOS ---
-            // Guardamos la lista completa de productos para la gestión
             const todosLosProductos = dataMap.products || [];
             setProductos(todosLosProductos);
-            
-            // Filtramos y guardamos solo los productos activos para el POS
             setProductosActivos(todosLosProductos.filter(p => p.estado === 'activo'));
-            // --- FIN DE CAMBIOS ---
-            
+            setProductosPopulares(dataMap['products/popular-for-pos/'] || []);
             setMetodosDePago(dataMap['payment-methods'] || []);
             
             if (puedeVerPanel) {
@@ -164,13 +156,33 @@ export default function App() {
     }
 
     const handleVentaCompleta = async (carrito, total, idMetodoPago) => {
-        const datosVenta = { total_amount: total.toFixed(2), details: carrito.map(item => ({ product_id: item.id, quantity: item.quantity, unit_price: item.price.toFixed(2) })), payment_method_id: idMetodoPago };
-        try {
-            const response = await fetch(`${API_URL}/sales/`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + String(tokensAuth.access) }, body: JSON.stringify(datosVenta) });
-            if (!response.ok) throw new Error('Error al registrar la venta.');
-            alert('Venta registrada.'); 
-            obtenerDatos();
-        } catch (err) { alert(`Error: ${err.message}`); }
+        const datosVenta = { 
+            total_amount: total.toFixed(2), 
+            details: carrito.map(item => ({ 
+                product_id: item.id, 
+                quantity: item.quantity, 
+                unit_price: item.price.toFixed(2) 
+            })), 
+            payment_method_id: idMetodoPago 
+        };
+
+        const promesaDeVenta = fetch(`${API_URL}/sales/`, { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + String(tokensAuth.access) }, 
+            body: JSON.stringify(datosVenta) 
+        }).then(res => {
+            if (!res.ok) return res.json().then(err => Promise.reject(err));
+            return res.json();
+        });
+
+        toast.promise(promesaDeVenta, {
+            loading: 'Registrando venta...',
+            success: () => {
+                obtenerDatos(); // Refrescamos todos los datos de la app
+                return 'Venta registrada con éxito.';
+            },
+            error: (err) => `Error al registrar la venta: ${JSON.stringify(err)}`
+        });
     };
     
     const renderizarVistaPanel = () => {
@@ -252,10 +264,12 @@ export default function App() {
                 <div className="flex-1 p-6 overflow-y-auto">
                     {vista === 'panel' && puedeVerPanel
                         ? renderizarVistaPanel()
-                        : <PuntoDeVenta productosActivos={productosActivos} metodosDePago={metodosDePago} onVentaCompleta={handleVentaCompleta} />
+                        : <PuntoDeVenta productosActivos={productosActivos} metodosDePago={metodosDePago} onVentaCompleta={handleVentaCompleta} productosPopulares={productosPopulares} />
                     }
                 </div>
             </main>
+
+            <Toaster richColors position="top-right" />
         </div>
     );
 }

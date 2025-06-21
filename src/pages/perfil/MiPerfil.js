@@ -1,6 +1,8 @@
 import React, { useState, useContext } from 'react';
+import { LoaderCircle } from 'lucide-react';
 import { ContextoAuth } from '../../context/AuthContext';
 import { Card, Button } from '../../components/ui/ComponentesUI';
+import { toast } from 'sonner';
 
 const API_URL = 'http://127.0.0.1:8000/api';
 
@@ -11,44 +13,56 @@ const MiPerfil = () => {
         new_password: '',
         confirm_password: ''
     });
-    const [mensaje, setMensaje] = useState({ tipo: '', texto: '' });
+    const [cargando, setCargando] = useState(false); // Estado para el indicador de carga
 
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
+    // --- INICIO DE CAMBIOS: Notificaciones con Sonner ---
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setMensaje({ tipo: '', texto: '' });
 
+        // Validación inicial con un toast
         if (formData.new_password !== formData.confirm_password) {
-            setMensaje({ tipo: 'error', texto: 'Las contraseñas nuevas no coinciden.' });
+            toast.error('Las contraseñas nuevas no coinciden.');
             return;
         }
 
-        try {
-            const response = await fetch(`${API_URL}/users/change-password/`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer ' + String(tokensAuth.access)
-                },
-                body: JSON.stringify(formData)
-            });
+        setCargando(true);
 
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.error || 'Ocurrió un error al cambiar la contraseña.');
+        const promesa = fetch(`${API_URL}/users/change-password/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + String(tokensAuth.access)
+            },
+            body: JSON.stringify(formData)
+        }).then(res => {
+            if (!res.ok) {
+                // Si la respuesta no es OK, leemos el JSON del error y lo rechazamos
+                return res.json().then(err => Promise.reject(err));
             }
+            return res.json();
+        });
 
-            setMensaje({ tipo: 'exito', texto: 'Contraseña cambiada con éxito.' });
-            setFormData({ old_password: '', new_password: '', confirm_password: '' });
-
-        } catch (err) {
-            setMensaje({ tipo: 'error', texto: err.message });
-        }
+        toast.promise(promesa, {
+            loading: 'Guardando cambios...',
+            success: (data) => {
+                // Limpiamos el formulario en caso de éxito
+                setFormData({ old_password: '', new_password: '', confirm_password: '' });
+                return data.status || 'Contraseña cambiada con éxito.';
+            },
+            error: (err) => {
+                // Mostramos el mensaje de error que viene del backend
+                return err.error || 'Ocurrió un error inesperado.';
+            },
+            finally: () => {
+                setCargando(false);
+            }
+        });
     };
+    // --- FIN DE CAMBIOS ---
 
     if (!usuario) {
         return <div>Cargando perfil...</div>;
@@ -71,25 +85,24 @@ const MiPerfil = () => {
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
                         <label className="block text-sm font-medium">Contraseña Actual</label>
-                        <input type="password" name="old_password" value={formData.old_password} onChange={handleChange} className="p-2 border rounded-lg w-full mt-1" required />
+                        <input type="password" name="old_password" value={formData.old_password} onChange={handleChange} className="p-2 border rounded-lg w-full mt-1" required disabled={cargando} />
                     </div>
                      <div>
                         <label className="block text-sm font-medium">Nueva Contraseña</label>
-                        <input type="password" name="new_password" value={formData.new_password} onChange={handleChange} className="p-2 border rounded-lg w-full mt-1" required />
+                        <input type="password" name="new_password" value={formData.new_password} onChange={handleChange} className="p-2 border rounded-lg w-full mt-1" required disabled={cargando} />
                     </div>
                      <div>
                         <label className="block text-sm font-medium">Confirmar Nueva Contraseña</label>
-                        <input type="password" name="confirm_password" value={formData.confirm_password} onChange={handleChange} className="p-2 border rounded-lg w-full mt-1" required />
+                        <input type="password" name="confirm_password" value={formData.confirm_password} onChange={handleChange} className="p-2 border rounded-lg w-full mt-1" required disabled={cargando} />
                     </div>
 
-                    {mensaje.texto && (
-                        <p className={`text-sm ${mensaje.tipo === 'error' ? 'text-red-600' : 'text-green-600'}`}>
-                            {mensaje.texto}
-                        </p>
-                    )}
+                    {/* El mensaje de texto se elimina de aquí y se maneja con toast */}
 
                     <div className="flex justify-end">
-                        <Button type="submit">Guardar Cambios</Button>
+                        {/* Se añade el spinner de carga al botón */}
+                        <Button type="submit" disabled={cargando}>
+                            {cargando ? <LoaderCircle className="animate-spin" /> : 'Guardar Cambios'}
+                        </Button>
                     </div>
                 </form>
             </Card>

@@ -1,8 +1,8 @@
 import React, { useState, useContext, useMemo } from 'react';
 import { ContextoAuth } from '../../context/AuthContext';
 import { Button, Card, Table } from '../../components/ui/ComponentesUI';
-// 1. Importamos el hook que maneja la lógica de paginación
 import { useFiltrosYBusqueda } from '../../hooks/useFiltrosYBusqueda';
+import { toast } from 'sonner';
 
 const API_URL = 'http://127.0.0.1:8000/api';
 
@@ -13,27 +13,20 @@ const ActualizacionMasivaPrecios = ({ productos, proveedores, obtenerDatos }) =>
     const [objetivo, setObjetivo] = useState('both');
     const { tokensAuth } = useContext(ContextoAuth);
 
-    // Filtramos los productos según el proveedor seleccionado. Esta lista es la que paginaremos.
     const productosFiltrados = useMemo(() => {
         if (!proveedorSeleccionado) return [];
         return productos.filter(p => p.provider === parseInt(proveedorSeleccionado));
     }, [productos, proveedorSeleccionado]);
 
-
-    // 2. Usamos el hook para paginar la lista de productos YA filtrada
     const { datosPaginados, PaginacionUI } = useFiltrosYBusqueda({
         items: productosFiltrados,
         itemsPorPagina: 10,
-        // No necesitamos lógica de filtro adicional, así que simplemente devolvemos los items
         logicaDeFiltro: (items) => items, 
-        // No necesitamos un componente de filtro, así que pasamos uno que no renderiza nada
         ComponenteFiltros: () => null, 
         filtrosIniciales: {}
     });
 
-
     const seleccionarTodos = () => {
-        // La lógica de "seleccionar todo" debe operar sobre la lista completa de productos filtrados, no solo la página actual
         if (productosSeleccionados.size === productosFiltrados.length) {
             setProductosSeleccionados(new Set());
         } else {
@@ -52,8 +45,9 @@ const ActualizacionMasivaPrecios = ({ productos, proveedores, obtenerDatos }) =>
     };
 
     const actualizarPrecios = async () => {
+        // 1. Validación inicial con un toast de error
         if(productosSeleccionados.size === 0 || !porcentaje || !objetivo) {
-            alert("Por favor, selecciona productos, un porcentaje y un objetivo de actualización.");
+            toast.error("Por favor, selecciona productos, un porcentaje y un objetivo de actualización.");
             return;
         }
 
@@ -63,25 +57,40 @@ const ActualizacionMasivaPrecios = ({ productos, proveedores, obtenerDatos }) =>
             update_target: objetivo
         };
 
-        if(window.confirm(`¿Seguro que quieres actualizar ${productosSeleccionados.size} productos con un ${porcentaje}% de aumento?`)) {
-            try {
-                const response = await fetch(`${API_URL}/bulk-price-update/`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + String(tokensAuth.access) },
-                    body: JSON.stringify(payload)
-                });
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(JSON.stringify(errorData));
-                }
-                alert('Precios actualizados con éxito.');
-                obtenerDatos();
-                setProductosSeleccionados(new Set());
-                setPorcentaje('');
-            } catch (err) {
-                alert(`Error al actualizar precios: ${err.message}`);
-            }
-        }
+        const ejecutarActualizacion = () => {
+            const promesa = fetch(`${API_URL}/bulk-price-update/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + String(tokensAuth.access) },
+                body: JSON.stringify(payload)
+            }).then(res => {
+                if (!res.ok) return res.json().then(err => Promise.reject(err));
+                return res.json();
+            });
+
+            toast.promise(promesa, {
+                loading: 'Actualizando precios...',
+                success: (data) => {
+                    obtenerDatos();
+                    setProductosSeleccionados(new Set());
+                    setPorcentaje('');
+                    return data.message || 'Precios actualizados con éxito.';
+                },
+                error: (err) => `Error al actualizar: ${JSON.stringify(err)}`
+            });
+        };
+
+        // 2. Notificación de confirmación con botones de acción
+        toast("Confirmar Actualización", {
+            description: `¿Estás seguro de que quieres actualizar ${productosSeleccionados.size} productos con un ${porcentaje}% de ajuste? Esta acción no se puede deshacer.`,
+            action: {
+                label: "Sí, actualizar",
+                onClick: () => ejecutarActualizacion()
+            },
+            cancel: {
+                label: "Cancelar"
+            },
+            duration: 10000, // Duración más larga para que el usuario pueda decidir
+        });
     };
 
     return (
@@ -97,8 +106,8 @@ const ActualizacionMasivaPrecios = ({ productos, proveedores, obtenerDatos }) =>
                         </select>
                     </div>
                     <div>
-                         <label className="block text-sm font-medium text-gray-700">Porcentaje de Aumento (%)</label>
-                         <input type="number" value={porcentaje} onChange={(e) => setPorcentaje(e.target.value)} placeholder="Ej: 15" className="p-2 border rounded-lg w-full mt-1"/>
+                         <label className="block text-sm font-medium text-gray-700">Porcentaje de Ajuste (%)</label>
+                         <input type="number" value={porcentaje} onChange={(e) => setPorcentaje(e.target.value)} placeholder="Ej: 15 o -10" className="p-2 border rounded-lg w-full mt-1"/>
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700">Actualizar Precio de:</label>
@@ -113,29 +122,36 @@ const ActualizacionMasivaPrecios = ({ productos, proveedores, obtenerDatos }) =>
             </Card>
 
             {proveedorSeleccionado ? (
-                <>
-                    <Table 
-                        headers={[
-                            <input type="checkbox" onChange={seleccionarTodos} checked={productosSeleccionados.size > 0 && productosFiltrados.length > 0 && productosSeleccionados.size === productosFiltrados.length}/>, 
-                            'SKU', 'Nombre', 'Costo Actual', 'Venta Actual'
-                        ]} 
-                        // 3. Pasamos los datos paginados a la tabla
-                        data={datosPaginados} 
-                        renderRow={(p) => (
-                            <tr key={p.id} className="bg-white border-b hover:bg-gray-50">
-                                <td className="px-6 py-4"><input type="checkbox" checked={productosSeleccionados.has(p.id)} onChange={() => seleccionarProducto(p.id)}/></td>
-                                <td className="px-6 py-4">{p.sku}</td>
-                                <td className="px-6 py-4">{p.name}</td>
-                                <td className="px-6 py-4">${parseFloat(p.cost_price).toFixed(2)}</td>
-                                <td className="px-6 py-4">${parseFloat(p.sale_price).toFixed(2)}</td>
-                            </tr>
-                        )}
-                    />
-                    {/* 4. Renderizamos la UI de paginación */}
-                    {PaginacionUI}
-                </>
+                // Si hay un proveedor seleccionado, verificamos si tiene productos
+                productosFiltrados.length > 0 ? (
+                    <>
+                        <Table 
+                            headers={[
+                                <input type="checkbox" onChange={seleccionarTodos} checked={productosSeleccionados.size > 0 && productosFiltrados.length > 0 && productosSeleccionados.size === productosFiltrados.length}/>, 
+                                'SKU', 'Nombre', 'Costo Actual', 'Venta Actual'
+                            ]} 
+                            data={datosPaginados} 
+                            renderRow={(p) => (
+                                <tr key={p.id} className="bg-white border-b hover:bg-gray-50">
+                                    <td className="px-6 py-4"><input type="checkbox" checked={productosSeleccionados.has(p.id)} onChange={() => seleccionarProducto(p.id)}/></td>
+                                    <td className="px-6 py-4">{p.sku}</td>
+                                    <td className="px-6 py-4">{p.name}</td>
+                                    <td className="px-6 py-4">${parseFloat(p.cost_price).toFixed(2)}</td>
+                                    <td className="px-6 py-4">${parseFloat(p.sale_price).toFixed(2)}</td>
+                                </tr>
+                            )}
+                        />
+                        {PaginacionUI}
+                    </>
+                ) : (
+                    // Mensaje si el proveedor no tiene productos
+                    <Card className="text-center text-gray-500 py-16">
+                        <p>Este proveedor no tiene productos asociados.</p>
+                    </Card>
+                )
             ) : (
-                <Card className="text-center text-gray-500">
+                // Mensaje inicial si no se ha seleccionado ningún proveedor
+                <Card className="text-center text-gray-500 py-16">
                     <p>Por favor, seleccione un proveedor para ver sus productos.</p>
                 </Card>
             )}

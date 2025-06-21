@@ -18,6 +18,7 @@ export const ProveedorAuth = ({ children }) => {
     const [usuario, setUsuario] = useState(null);
     const [cargandoContexto, setCargandoContexto] = useState(true);
 
+    // --- INICIO DE LA CORRECCIÓN FINAL ---
     const iniciarSesion = async (nombreUsuario, contrasena) => {
         try {
             const response = await fetch(`${API_URL}/token/`, { 
@@ -25,18 +26,25 @@ export const ProveedorAuth = ({ children }) => {
                 headers: { 'Content-Type': 'application/json' }, 
                 body: JSON.stringify({ username: nombreUsuario, password: contrasena }) 
             });
+            
             const data = await response.json();
+
             if (response.ok) { 
                 setTokensAuth(data); 
                 setUsuario(decodificarToken(data.access)); 
-                localStorage.setItem('tokensAuth', JSON.stringify(data)); 
+                localStorage.setItem('tokensAuth', JSON.stringify(data));
+                // Devolvemos un objeto indicando éxito
+                return { success: true };
             } else { 
-                alert('Usuario o contraseña incorrectos.'); 
+                // Devolvemos un objeto indicando el fallo y el mensaje
+                return { success: false, message: data.detail || 'Usuario o contraseña incorrectos.' };
             }
         } catch (error) {
-            alert('Error de conexión con el servidor.');
+            // Devolvemos un objeto indicando el fallo de conexión
+            return { success: false, message: 'Error de conexión con el servidor.' };
         }
     };
+    // --- FIN DE LA CORRECCIÓN FINAL ---
 
     const cerrarSesion = useCallback(() => { 
         setTokensAuth(null); 
@@ -44,6 +52,7 @@ export const ProveedorAuth = ({ children }) => {
         localStorage.removeItem('tokensAuth'); 
     }, []);
 
+    // El resto del archivo no necesita cambios...
     const actualizarToken = useCallback(async () => {
         const tokensActuales = JSON.parse(localStorage.getItem('tokensAuth'));
         if (!tokensActuales?.refresh) {
@@ -75,28 +84,20 @@ export const ProveedorAuth = ({ children }) => {
             setCargandoContexto(false);
             return;
         }
-
         const tokenInfo = decodificarToken(tokensAuth.access);
-        
         if (!tokenInfo) {
             cerrarSesion();
             setCargandoContexto(false);
             return;
         }
-        
         setUsuario(tokenInfo);
-
         const ahora = Date.now() / 1000;
         const tiempoRestante = (tokenInfo.exp - ahora - 60) * 1000;
-        
         const timeout = setTimeout(() => {
             actualizarToken();
         }, tiempoRestante > 0 ? tiempoRestante : 0);
-        
         setCargandoContexto(false);
-        
         return () => clearTimeout(timeout);
-
     }, [tokensAuth, actualizarToken, cerrarSesion]);
 
     const datosContexto = useMemo(() => ({ 
