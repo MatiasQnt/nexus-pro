@@ -11,25 +11,34 @@ const API_URL = 'http://127.0.0.1:8000/api';
  * Formulario para crear o editar una categoría.
  */
 const FormularioCategoria = ({ categoria, onGuardar, onCancelar }) => {
-    const [formData, setFormData] = useState({ name: '', is_active: true });
+    const [formData, setFormData] = useState({ name: '', description: '', is_active: true });
+    
     useEffect(() => {
         if (categoria) {
             setFormData({
                 name: categoria.name || '',
+                description: categoria.description || '',
                 is_active: categoria.is_active !== undefined ? categoria.is_active : true,
             });
         }
     }, [categoria]);
+
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
         setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
     };
+
     const handleSubmit = (e) => { e.preventDefault(); onGuardar(formData); };
+
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
             <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de la Categoría</label>
                 <input type="text" name="name" value={formData.name} onChange={handleChange} className="p-2 border rounded-lg w-full" placeholder="Ej: Bebidas" required />
+            </div>
+            <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Descripción (Opcional)</label>
+                <textarea name="description" value={formData.description || ''} onChange={handleChange} className="p-2 border rounded-lg w-full min-h-[80px]" placeholder="Ej: Gaseosas, aguas, jugos, etc." />
             </div>
             <div className="flex items-center gap-2 mt-4">
                 <input id="is_active" name="is_active" type="checkbox" checked={formData.is_active} onChange={handleChange} className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
@@ -80,7 +89,7 @@ const GestionCategorias = ({ categorias, obtenerDatos }) => {
     });
 
     const cerrarModal = () => { setModalAbierto(false); setCategoriaSeleccionada(null); };
-    const abrirModalNuevo = () => { setCategoriaSeleccionada({ name: '', is_active: true }); setModalAbierto(true); };
+    const abrirModalNuevo = () => { setCategoriaSeleccionada({ name: '', description: '', is_active: true }); setModalAbierto(true); };
     const abrirModalEditar = (categoria) => { setCategoriaSeleccionada(categoria); setModalAbierto(true); };
 
     const guardarCategoria = async (datosCategoria) => {
@@ -105,33 +114,44 @@ const GestionCategorias = ({ categorias, obtenerDatos }) => {
         });
     };
     
-    const borrarCategoria = async (idCategoria) => {
-        const promesaDeBorrado = new Promise(async (resolve, reject) => {
-            try {
-                const response = await fetch(`${API_URL}/categories/${idCategoria}/`, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + String(tokensAuth.access) } });
-                if (response.status === 204) {
-                    resolve("Categoría eliminada con éxito.");
-                } else if (response.ok) {
-                    const data = await response.json();
-                    resolve(data.detail);
-                } else {
-                    const errorData = await response.json();
-                    reject(new Error(errorData.detail || 'Error al eliminar.'));
+    // --- INICIO DE CAMBIOS ---
+    const borrarCategoria = (categoria) => {
+        const ejecutarBorrado = () => {
+            const promesa = fetch(`${API_URL}/categories/${categoria.id}/`, {
+                method: 'DELETE',
+                headers: { 'Authorization': 'Bearer ' + String(tokensAuth.access) },
+            }).then(async (res) => {
+                if (res.status === 204) {
+                    return { message: "Categoría eliminada con éxito." };
                 }
-            } catch (err) {
-                reject(err);
-            }
-        });
+                if (res.ok) {
+                    const data = await res.json();
+                    return { message: data.detail || "La operación se completó." };
+                }
+                const errorData = await res.json();
+                return Promise.reject(errorData);
+            });
 
-        toast.promise(promesaDeBorrado, {
-            loading: 'Eliminando...',
-            success: (mensaje) => {
-                obtenerDatos();
-                return mensaje;
+            toast.promise(promesa, {
+                loading: 'Procesando...',
+                success: (data) => {
+                    obtenerDatos();
+                    return data.message;
+                },
+                error: (err) => `Error: ${err.detail || JSON.stringify(err)}`,
+            });
+        };
+
+        toast("Confirmar Eliminación", {
+            description: `¿Estás seguro de que quieres eliminar la categoría "${categoria.name}"?`,
+            action: {
+                label: "Sí, eliminar",
+                onClick: ejecutarBorrado,
             },
-            error: (err) => `Error: ${err.message}`
+            cancel: { label: "No" },
         });
     };
+    // --- FIN DE CAMBIOS ---
 
     return (
         <div className="space-y-6">
@@ -147,6 +167,7 @@ const GestionCategorias = ({ categorias, obtenerDatos }) => {
                     <Table 
                         headers={[
                             { title: 'Nombre' },
+                            { title: 'Descripción' },
                             { title: 'Estado' },
                             { title: 'Acciones' }
                         ]} 
@@ -154,6 +175,7 @@ const GestionCategorias = ({ categorias, obtenerDatos }) => {
                         renderRow={(cat) => (
                             <tr key={cat.id} className={`border-b hover:bg-gray-50 ${!cat.is_active ? 'bg-gray-100 text-gray-500' : 'bg-white'}`}>
                                 <td className="px-6 py-4 font-medium">{cat.name}</td>
+                                <td className="px-6 py-4 text-sm text-gray-600">{cat.description || '-'}</td>
                                 <td className="px-6 py-4">
                                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${cat.is_active ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
                                         {cat.is_active ? 'Activa' : 'Inactiva'}
@@ -161,7 +183,9 @@ const GestionCategorias = ({ categorias, obtenerDatos }) => {
                                 </td>
                                 <td className="px-6 py-4 flex gap-2">
                                     <Button onClick={() => abrirModalEditar(cat)} variant="secondary" size="sm" icon={Edit} />
-                                    <Button onClick={() => borrarCategoria(cat.id)} variant="danger" size="sm" icon={Trash2} />
+                                    {/* --- INICIO DE CAMBIOS --- */}
+                                    <Button onClick={() => borrarCategoria(cat)} variant="danger" size="sm" icon={Trash2} />
+                                    {/* --- FIN DE CAMBIOS --- */}
                                 </td>
                             </tr>
                         )}

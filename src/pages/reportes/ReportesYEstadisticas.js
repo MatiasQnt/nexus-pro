@@ -2,15 +2,12 @@ import React, { useState, useEffect, useContext } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { ContextoAuth } from '../../context/AuthContext';
 import { Card, Button } from '../../components/ui/ComponentesUI';
-// --- INICIO DE CORRECCIÓN 1/2 ---
-// Se importa 'toast' y se corrige el nombre del ícono 'CreditCard'
 import { DollarSign, ShoppingCart, Users, TrendingUp, Star, Award, FileDown, Layers, Bed, BarChart3, Clock, CreditCard } from 'lucide-react';
 import { toast } from 'sonner';
-// --- FIN DE CORRECCIÓN 1/2 ---
 
 const API_URL = 'http://127.0.0.1:8000/api';
 
-// --- SUB-COMPONENTES (sin cambios funcionales) ---
+// --- SUB-COMPONENTES (Sin cambios) ---
 const KpiCard = ({ title, value, icon: Icon, formatAsCurrency = false }) => {
     const formattedValue = formatAsCurrency 
         ? `$${parseFloat(value || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -64,13 +61,12 @@ const DormantProductsTable = ({ title, data, icon: Icon }) => (
     </Card>
 );
 
-// --- COMPONENTE EXPORTTOOL (ACTUALIZADO CON SONNER) ---
+// --- COMPONENTE EXPORTTOOL (Sin cambios) ---
 const ExportTool = ({ tokensAuth }) => {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [exporting, setExporting] = useState(false);
 
-    // --- INICIO DE CORRECCIÓN 2/2 ---
     const handleExport = async () => {
         if (!startDate || !endDate) {
             toast.error('Por favor, selecciona un rango de fechas.');
@@ -109,7 +105,6 @@ const ExportTool = ({ tokensAuth }) => {
             finally: () => setExporting(false)
         });
     };
-    // --- FIN DE CORRECCIÓN 2/2 ---
 
     return (
         <Card className="p-6 bg-gray-50">
@@ -136,7 +131,6 @@ const ExportTool = ({ tokensAuth }) => {
         </Card>
     );
 };
-
 
 // --- COMPONENTE PRINCIPAL ---
 const ReportesYEstadisticas = () => {
@@ -169,7 +163,14 @@ const ReportesYEstadisticas = () => {
     if (!data) return <div className="p-6 text-center">No hay datos disponibles.</div>;
     
     const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF'];
-    const datosGraficoVentas = periodoVentas === 'daily' ? data.charts.ventas_diarias : data.charts.ventas_mensuales;
+    
+    // --- INICIO DE CAMBIOS EN FRONTEND ---
+    const datosGraficoVentas = {
+      daily: data.charts.ventas_diarias,
+      weekly: data.charts.ventas_semanales,
+      monthly: data.charts.ventas_mensuales
+    }[periodoVentas] || [];
+    // --- FIN DE CAMBIOS EN FRONTEND ---
 
     return (
         <div className="space-y-8 p-4 md:p-6">
@@ -192,8 +193,11 @@ const ReportesYEstadisticas = () => {
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-lg font-semibold text-gray-700 flex items-center"><BarChart3 className="mr-2"/>Ventas por Período</h3>
                             <div className="flex gap-2">
+                                {/* --- INICIO DE CAMBIOS EN FRONTEND --- */}
                                 <Button onClick={() => setPeriodoVentas('daily')} variant={periodoVentas === 'daily' ? 'primary' : 'secondary'} size="sm">Diario</Button>
+                                <Button onClick={() => setPeriodoVentas('weekly')} variant={periodoVentas === 'weekly' ? 'primary' : 'secondary'} size="sm">Semanal</Button>
                                 <Button onClick={() => setPeriodoVentas('monthly')} variant={periodoVentas === 'monthly' ? 'primary' : 'secondary'} size="sm">Mensual</Button>
+                                {/* --- FIN DE CAMBIOS EN FRONTEND --- */}
                             </div>
                         </div>
                          <ResponsiveContainer width="100%" height={300}>

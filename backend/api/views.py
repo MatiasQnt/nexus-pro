@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from django.db import transaction
 from django.db.models import Count, Sum, F, ProtectedError
-from django.db.models.functions import TruncDay, TruncMonth, ExtractHour, TruncHour
+from django.db.models.functions import TruncHour ,TruncDay, TruncMonth, TruncWeek, ExtractHour
 from django.contrib.auth.models import User, Group
 from django.http import HttpResponse
 from django.utils import timezone
@@ -313,8 +313,6 @@ class DashboardReportsView(APIView):
         today_sales_qs = Sale.objects.filter(date_time__date=today, status='Completada')
         total_sales_today = today_sales_qs.aggregate(total=Sum('final_amount'))['total'] or 0
         
-        # --- INICIO DE CAMBIOS ---
-        # CAMBIO: Aseguramos que los cálculos solo usen productos que estaban activos
         gross_profit_today = SaleDetail.objects.filter(
             sale__in=today_sales_qs
         ).annotate(
@@ -328,13 +326,16 @@ class DashboardReportsView(APIView):
             'productos_vendidos': SaleDetail.objects.filter(sale__in=today_sales_qs).aggregate(total_quantity=Sum('quantity'))['total_quantity'] or 0
         }
         
-        # CAMBIO: Productos con bajo stock ahora solo muestra los activos
         low_stock_limit = 5
         low_stock_products_query = Product.objects.filter(stock__lte=low_stock_limit, estado='activo').order_by('stock').values('id', 'name', 'stock')[:10]
 
         sales_by_payment_method = Sale.objects.filter(date_time__date__gte=last_30_days_start, status='Completada').values('payment_method__name').annotate(total=Sum('final_amount')).order_by('-total')
+        
+        last_12_weeks_start = today - timedelta(weeks=12)
         daily_sales = Sale.objects.filter(date_time__date__gte=last_30_days_start, status='Completada').annotate(day=TruncDay('date_time')).values('day').annotate(total_sales=Sum('final_amount')).order_by('day')
+        weekly_sales = Sale.objects.filter(date_time__date__gte=last_12_weeks_start, status='Completada').annotate(week=TruncWeek('date_time')).values('week').annotate(total_sales=Sum('final_amount')).order_by('week')
         monthly_sales = Sale.objects.filter(date_time__date__gte=today - timedelta(days=365), status='Completada').annotate(month=TruncMonth('date_time')).values('month').annotate(total_sales=Sum('final_amount')).order_by('month')
+
         peak_hours_query = Sale.objects.filter(date_time__date__gte=last_30_days_start, status='Completada').annotate(hour=ExtractHour('date_time')).values('hour').annotate(total=Sum('final_amount')).order_by('hour')
         sales_by_hour_dict = {item['hour']: item['total'] for item in peak_hours_query}
         peak_hours_data = [{'name': f"{h:02d}h", 'Ventas': sales_by_hour_dict.get(h, 0)} for h in range(24)]
@@ -360,13 +361,12 @@ class DashboardReportsView(APIView):
         dormant_since = today - timedelta(days=dormant_period_days)
         sold_product_ids = SaleDetail.objects.filter(sale__status='Completada', sale__date_time__date__gte=dormant_since).values_list('product_id', flat=True).distinct()
         
-        # CAMBIO: Productos dormidos ahora solo muestra los activos
         dormant_products_query = Product.objects.filter(stock__gt=0, estado='activo').exclude(id__in=sold_product_ids).values('name', 'sku', 'stock')[:10]
-        # --- FIN DE CAMBIOS ---
         
         chart_data = {
             'ventas_por_metodo_pago': [{'name': item['payment_method__name'] or 'No especificado', 'value': item['total']} for item in sales_by_payment_method],
             'ventas_diarias': [{'name': item['day'].strftime('%d/%m'), 'Ventas': item['total_sales']} for item in daily_sales],
+            'ventas_semanales': [{'name': item['week'].strftime('%d/%m'), 'Ventas': item['total_sales']} for item in weekly_sales],
             'ventas_mensuales': [{'name': item['month'].strftime('%b %Y'), 'Ventas': item['total_sales']} for item in monthly_sales],
             'ventas_por_hora': peak_hours_data,
             'ventas_por_categoria': [{'name': item['product__category__name'], 'Ventas': item['value']} for item in sales_by_category_query]
@@ -385,8 +385,7 @@ class DashboardReportsView(APIView):
             'kpis': kpis,
             'charts': chart_data,
             'rankings': rankings_data,
-            'other_reports': other_reports,
-            'low_stock_products': list(low_stock_products_query)
+            'other_reports': other_reports
         })
 
 class ReportsView(APIView):

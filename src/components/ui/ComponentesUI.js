@@ -44,7 +44,7 @@ export const Table = ({ headers, data, renderRow }) => (
         <thead className="text-xs text-gray-700 uppercase bg-gray-50">
             <tr>
                 {headers.map((header, index) => (
-                    <th key={index} scope="col" className={`px-4 py-3 ${header.width || ''}`}>
+                    <th key={index} scope="col" className={`px-6 py-4 ${header.width || ''}`}>
                         {header.title}
                     </th>
                 ))}

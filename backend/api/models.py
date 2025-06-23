@@ -17,14 +17,17 @@ class PaymentMethod(models.Model):
 
 class Provider(models.Model):
     name = models.CharField(max_length=100, verbose_name='Nombre')
-    contact_person = models.CharField(max_length=100, blank=True, null=True, verbose_name='Persona de Contacto')
-    phone_number = models.CharField(max_length=20, blank=True, null=True, verbose_name='Teléfono')
+    # --- CAMBIOS AQUÍ ---
+    contact_person = models.CharField(max_length=100, verbose_name='Persona de Contacto')
+    phone_number = models.CharField(max_length=20, verbose_name='Teléfono')
+    # --- FIN DE CAMBIOS ---
     email = models.EmailField(blank=True, null=True, verbose_name='Email')
     is_active = models.BooleanField(default=True, verbose_name='Activo')
     def __str__(self): return self.name
 
 class Category(models.Model):
     name = models.CharField(max_length=100, unique=True, verbose_name='Nombre')
+    description = models.TextField(blank=True, null=True, verbose_name='Descripción')
     is_active = models.BooleanField(default=True, verbose_name='Activa')
     def __str__(self): return self.name
 

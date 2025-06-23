@@ -47,7 +47,6 @@ const logicaFiltroProductos = (productos, filtros) => {
     const terminoBusquedaLower = busqueda.toLowerCase();
     return productos.filter(p => p.name.toLowerCase().includes(terminoBusquedaLower) || p.sku.toLowerCase().includes(terminoBusquedaLower) || (p.category_name && p.category_name.toLowerCase().includes(terminoBusquedaLower)));
 };
-// --- Fin de Componentes de Formulario y Lógica ---
 
 const GestionProductos = ({ productos, proveedores, categorias, obtenerDatos, roles }) => {
     const [modalAbierto, setModalAbierto] = useState(false);
@@ -55,10 +54,6 @@ const GestionProductos = ({ productos, proveedores, categorias, obtenerDatos, ro
     const [productoSeleccionado, setProductoSeleccionado] = useState(null);
     const { tokensAuth } = useContext(ContextoAuth);
     const puedeGestionar = roles?.esAdmin || roles?.esSuperAdmin;
-
-    // Puedes quitar los console.log si ya confirmaste el problema
-    // console.log("ROLES RECIBIDOS:", roles);
-    // console.log("¿PUEDE GESTIONAR?:", puedeGestionar);
 
     const { datosPaginados, FiltrosUI, PaginacionUI } = useFiltrosYBusqueda({
         items: productos,
@@ -73,7 +68,50 @@ const GestionProductos = ({ productos, proveedores, categorias, obtenerDatos, ro
     const abrirModalStock = (producto) => { setProductoSeleccionado(producto); setStockModalAbierto(true); };
     const guardarProducto = async (datosProducto) => { const esEditando = !!datosProducto.id; const url = esEditando ? `${API_URL}/products/${datosProducto.id}/` : `${API_URL}/products/`; const method = esEditando ? 'PUT' : 'POST'; const payload = { ...datosProducto }; delete payload.provider_name; delete payload.category_name; if (payload.provider === '') payload.provider = null; const promesaDeGuardado = fetch(url, { method, headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + String(tokensAuth.access) }, body: JSON.stringify(payload) }).then(res => { if (!res.ok) return res.json().then(err => Promise.reject(err)); return res.json(); }); toast.promise(promesaDeGuardado, { loading: 'Guardando producto...', success: () => { setModalAbierto(false); obtenerDatos(); return `Producto ${esEditando ? 'actualizado' : 'creado'} con éxito.`; }, error: (err) => `Error al guardar: ${JSON.stringify(err)}` }); };
     const guardarStock = async (datosStock) => { if (!productoSeleccionado) return; const url = `${API_URL}/products/${productoSeleccionado.id}/update-stock/`; const promesaDeStock = fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + String(tokensAuth.access) }, body: JSON.stringify({ stock: datosStock.stock }) }).then(res => { if (!res.ok) return res.json().then(err => Promise.reject(err)); return res.json(); }); toast.promise(promesaDeStock, { loading: 'Añadiendo stock...', success: () => { setStockModalAbierto(false); obtenerDatos(); return 'Stock añadido con éxito.'; }, error: (err) => `Error: ${JSON.stringify(err)}` }); };
-    const borrarProducto = async (idProducto) => { if (!window.confirm("¿Seguro que quieres eliminar este producto?")) return; const promesaDeBorrado = new Promise(async (resolve, reject) => { try { const response = await fetch(`${API_URL}/products/${idProducto}/`, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + String(tokensAuth.access) } }); if (response.status === 204 || response.ok) { resolve("Producto eliminado."); } else { const errorData = await response.json(); reject(new Error(JSON.stringify(errorData))); } } catch (err) { reject(err); } }); toast.promise(promesaDeBorrado, { loading: 'Eliminando...', success: (msg) => { obtenerDatos(); return msg; }, error: (err) => `Error: ${err.message}` }); };
+
+    // --- INICIO DE CAMBIOS ---
+    const borrarProducto = (producto) => {
+        const ejecutarBorrado = () => {
+            const promesa = fetch(`${API_URL}/products/${producto.id}/`, {
+                method: 'DELETE',
+                headers: { 'Authorization': 'Bearer ' + String(tokensAuth.access) },
+            }).then(async (res) => {
+                // Si la respuesta es 204, fue un borrado exitoso y no tiene cuerpo.
+                if (res.status === 204) {
+                    return { message: "Producto eliminado con éxito." };
+                }
+                // Si la respuesta es exitosa (ej. 200), pero no 204, tiene un cuerpo con un mensaje.
+                if (res.ok) {
+                    const data = await res.json();
+                    // Este es el caso del "soft-delete", donde el backend nos da un mensaje específico.
+                    return { message: data.detail || "La operación se completó." };
+                }
+                // Si la respuesta no es exitosa, la rechazamos con el error del backend.
+                const errorData = await res.json();
+                return Promise.reject(errorData);
+            });
+
+            toast.promise(promesa, {
+                loading: 'Procesando...',
+                success: (data) => {
+                    obtenerDatos();
+                    // Usamos el mensaje que preparamos en el .then()
+                    return data.message;
+                },
+                error: (err) => `Error: ${err.detail || JSON.stringify(err)}`,
+            });
+        };
+
+        toast("Confirmar Eliminación", {
+            description: `¿Estás seguro de que quieres eliminar el producto "${producto.name}"?`,
+            action: {
+                label: "Sí, eliminar",
+                onClick: ejecutarBorrado,
+            },
+            cancel: { label: "No" },
+        });
+    };
+    // --- FIN DE CAMBIOS ---
 
     return (
         <div className="space-y-6">
@@ -97,16 +135,13 @@ const GestionProductos = ({ productos, proveedores, categorias, obtenerDatos, ro
                                             <td className="px-4 py-3 truncate" title={p.category_name}>{p.category_name}</td>
                                             <td className="px-4 py-3 truncate" title={p.provider_name}>{p.provider_name || 'N/A'}</td>
                                             <td className="px-4 py-3"><span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${p.estado === 'activo' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{p.estado === 'activo' ? 'Activo' : 'Inactivo'}</span></td>
-                                            {/* =============================================================== */}
-                                            {/* SECCIÓN DE BOTONES DE ACCIÓN PARA LA TABLA (RECONSTRUIDA)      */}
-                                            {/* =============================================================== */}
                                             <td className="px-4 py-3">
                                                 <div className='flex gap-2'>
                                                     <Button onClick={() => abrirModalStock(p)} variant="secondary" icon={PackagePlus} title="Añadir Stock" />
                                                     {puedeGestionar && (
                                                         <>
                                                             <Button onClick={() => abrirModalEditar(p)} variant="secondary" icon={Edit} title="Editar Producto"/>
-                                                            <Button onClick={() => borrarProducto(p.id)} variant="danger" icon={Trash2} title="Borrar Producto"/>
+                                                            <Button onClick={() => borrarProducto(p)} variant="danger" icon={Trash2} title="Borrar Producto"/>
                                                         </>
                                                     )}
                                                 </div>
@@ -126,15 +161,12 @@ const GestionProductos = ({ productos, proveedores, categorias, obtenerDatos, ro
                                     <p className="text-sm text-gray-400 mt-1">SKU: {p.sku}</p>
                                     <p className="text-xl font-bold text-green-600 mt-2 text-right">${parseFloat(p.sale_price).toFixed(2)}</p>
                                 </div>
-                                 {/* =============================================================== */}
-                                 {/* SECCIÓN DE BOTONES DE ACCIÓN PARA LAS TARJETAS (RECONSTRUIDA)   */}
-                                 {/* =============================================================== */}
-                                <div className="pt-3 border-t flex gap-2">
+                               <div className="pt-3 border-t flex gap-2">
                                     <Button onClick={() => abrirModalStock(p)} variant="secondary" className="flex-1">Stock</Button>
                                     {puedeGestionar && (
                                         <>
                                             <Button onClick={() => abrirModalEditar(p)} variant="secondary" icon={Edit} />
-                                            <Button onClick={() => borrarProducto(p.id)} variant="danger" icon={Trash2} />
+                                            <Button onClick={() => borrarProducto(p)} variant="danger" icon={Trash2} />
                                         </>
                                     )}
                                 </div>

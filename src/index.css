@@ -15,3 +15,39 @@
 .animate-fade-in-down {
     animation: fade-in-down 0.3s ease-out forwards;
 }
+
+/* ==========================================================================
+   Estilos Personalizados para la Barra de Desplazamiento (Scrollbar)
+   ========================================================================== */
+
+/* Para navegadores modernos (Firefox) */
+* {
+  scrollbar-width: thin; /* Puede ser "auto", "thin" o "none" */
+  scrollbar-color: #6b7280 #374151; /* Color del thumb (manija) y del track (fondo) */
+}
+
+/* Para navegadores WebKit (Chrome, Safari, Edge, Opera) */
+
+/* Define el scrollbar completo */
+::-webkit-scrollbar {
+  width: 8px; /* Ancho del scrollbar vertical */
+  height: 8px; /* Alto del scrollbar horizontal */
+}
+
+/* Define el fondo del scrollbar (la "pista" por donde se mueve) */
+::-webkit-scrollbar-track {
+  background: #374151; /* Un gris oscuro, similar al panel */
+  border-radius: 10px;
+}
+
+/* Define la parte móvil del scrollbar (el "pulgar" o "manija") */
+::-webkit-scrollbar-thumb {
+  background-color: #6b7280; /* Un gris un poco más claro */
+  border-radius: 10px;
+  border: 2px solid #374151; /* Un pequeño borde del mismo color que el fondo para dar efecto de padding */
+}
+
+/* Cambia el color de la manija al pasar el mouse por encima */
+::-webkit-scrollbar-thumb:hover {
+  background-color: #9ca3af; /* Un gris aún más claro para el efecto hover */
+}

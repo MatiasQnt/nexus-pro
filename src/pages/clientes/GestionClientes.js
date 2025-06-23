@@ -116,33 +116,44 @@ const GestionClientes = ({ clientes, obtenerDatos }) => {
         );
     };
 
-    const borrarCliente = async (idCliente) => {
-        const promesaDeBorrado = new Promise(async (resolve, reject) => {
-            try {
-                const response = await fetch(`${API_URL}/clients/${idCliente}/`, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + String(tokensAuth.access) } });
-                if (response.status === 204) {
-                    resolve("Cliente eliminado con éxito.");
-                } else if (response.ok) {
-                    const data = await response.json();
-                    resolve(data.detail);
-                } else {
-                    const errorData = await response.json();
-                    reject(new Error(errorData.detail || "No se pudo eliminar."));
+    // --- INICIO DE CAMBIOS ---
+    const borrarCliente = (cliente) => {
+        const ejecutarBorrado = () => {
+            const promesa = fetch(`${API_URL}/clients/${cliente.id}/`, {
+                method: 'DELETE',
+                headers: { 'Authorization': 'Bearer ' + String(tokensAuth.access) },
+            }).then(async (res) => {
+                if (res.status === 204) {
+                    return { message: "Cliente eliminado con éxito." };
                 }
-            } catch (err) {
-                reject(err);
-            }
-        });
+                if (res.ok) {
+                    const data = await res.json();
+                    return { message: data.detail || "La operación se completó." };
+                }
+                const errorData = await res.json();
+                return Promise.reject(errorData);
+            });
 
-        toast.promise(promesaDeBorrado, {
-            loading: 'Eliminando...',
-            success: (mensaje) => {
-                obtenerDatos();
-                return mensaje;
+            toast.promise(promesa, {
+                loading: 'Procesando...',
+                success: (data) => {
+                    obtenerDatos();
+                    return data.message;
+                },
+                error: (err) => `Error: ${err.detail || JSON.stringify(err)}`,
+            });
+        };
+
+        toast("Confirmar Eliminación", {
+            description: `¿Estás seguro de que quieres eliminar al cliente "${cliente.name}"?`,
+            action: {
+                label: "Sí, eliminar",
+                onClick: ejecutarBorrado,
             },
-            error: (err) => `Error: ${err.message}`
+            cancel: { label: "No" },
         });
     };
+    // --- FIN DE CAMBIOS ---
 
     return (
         <div className="space-y-6">
@@ -178,7 +189,9 @@ const GestionClientes = ({ clientes, obtenerDatos }) => {
                                 </td>
                                 <td className="px-6 py-4 flex gap-2">
                                     <Button onClick={() => abrirModalEditar(cliente)} variant="secondary" size="sm" icon={Edit} />
-                                    <Button onClick={() => borrarCliente(cliente.id)} variant="danger" size="sm" icon={Trash2} />
+                                    {/* --- INICIO DE CAMBIOS --- */}
+                                    <Button onClick={() => borrarCliente(cliente)} variant="danger" size="sm" icon={Trash2} />
+                                    {/* --- FIN DE CAMBIOS --- */}
                                 </td>
                             </tr>
                         )}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext, useCallback, useRef } from 'react';
-import { ShoppingCart, DollarSign, Package, Truck, BarChart2, UserPlus, LogOut, Archive, UploadCloud, CreditCard, Users, Shield, User as UserIcon, LayoutDashboard, Receipt, Folder, Tag, UserCog, ChevronsLeft, ChevronsRight, Dna } from 'lucide-react';
+import { ShoppingCart, DollarSign, Package, Truck, BarChart2, UserPlus, LogOut, Archive, UploadCloud, CreditCard, Users, Shield, User as UserIcon, LayoutDashboard, Receipt, Folder, Tag, UserCog, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { ContextoAuth } from './context/AuthContext';
 import { Button } from './components/ui/ComponentesUI';
 import { Toaster, toast } from 'sonner';
@@ -20,6 +20,25 @@ import GestionCategorias from './pages/categorias/GestionCategorias';
 
 const API_URL = 'http://127.0.0.1:8000/api';
 const titulosPanel = { 'dashboard': 'Dashboard', 'mi-perfil': 'Mi Perfil', 'products': 'Gestión de Productos', 'categories': 'Gestión de Categorías', 'sales': 'Gestión de Ventas', 'providers': 'Gestión de Proveedores', 'clients': 'Gestión de Clientes', 'reports': 'Reportes y Estadísticas', 'cash-count': 'Cierre de Caja', 'bulk-price-update': 'Actualización Masiva de Precios', 'payment-methods': 'Métodos de Pago', 'users': 'Gestión de Usuarios' };
+
+// --- INICIO DE CAMBIOS ---
+// 1. Creamos un componente para el nuevo logo "N"
+const LogoIcon = () => (
+    <svg 
+        width="32" 
+        height="32" 
+        viewBox="0 0 24 24" 
+        fill="none" 
+        stroke="currentColor" 
+        strokeWidth="2.5" 
+        strokeLinecap="round" 
+        strokeLinejoin="round"
+        className="text-white"
+    >
+        <path d="M6 3v18L18 3v18" />
+    </svg>
+);
+// --- FIN DE CAMBIOS ---
 
 export default function App() {
     const { usuario, tokensAuth, cerrarSesion } = useContext(ContextoAuth);
@@ -68,19 +87,26 @@ export default function App() {
         <div className="flex h-screen bg-gray-800 font-sans">
     {vista === 'panel' && puedeVerPanel && (
         <aside className={`text-white flex flex-col flex-shrink-0 bg-gray-800 transition-all duration-300 ${sidebarColapsado ? 'w-20' : 'w-64'}`}>
-                    <div className="p-4 border-b border-gray-700 h-[65px] flex items-center justify-center"><h1 className="text-2xl font-bold whitespace-nowrap">{sidebarColapsado ? <Dna className="h-8 w-8 text-white" /> : <>Nexus<span className="font-light">POS</span></>}</h1></div>
-                    <nav className="flex-1 px-2 py-4 space-y-2 overflow-y-auto">
-                        <NavItem icon={LayoutDashboard} active={vistaPanel === 'dashboard'} onClick={(e) => { e.preventDefault(); setVistaPanel('dashboard'); setVista('panel'); }} colapsado={sidebarColapsado}>Dashboard</NavItem>
-                        {esAdminOSuperAdmin && (<NavGroup title="Gestión de Ventas" colapsado={sidebarColapsado}><NavItem icon={Receipt} active={vistaPanel === 'sales'} onClick={(e) => { e.preventDefault(); setVistaPanel('sales'); setVista('panel'); }} colapsado={sidebarColapsado}>Ventas</NavItem><NavItem icon={Archive} active={vistaPanel === 'cash-count'} onClick={(e) => { e.preventDefault(); setVistaPanel('cash-count'); setVista('panel'); }} colapsado={sidebarColapsado}>Cierre de Caja</NavItem><NavItem icon={BarChart2} active={vistaPanel === 'reports'} onClick={(e) => { e.preventDefault(); setVistaPanel('reports'); setVista('panel'); }} colapsado={sidebarColapsado}>Reportes</NavItem></NavGroup>)}
-                        <NavGroup title="Inventario" colapsado={sidebarColapsado}><NavItem icon={Package} active={vistaPanel === 'products'} onClick={(e) => { e.preventDefault(); setVistaPanel('products'); setVista('panel'); }} colapsado={sidebarColapsado}>Productos</NavItem>{esAdminOSuperAdmin && (<><NavItem icon={Folder} active={vistaPanel === 'categories'} onClick={(e) => { e.preventDefault(); setVistaPanel('categories'); setVista('panel'); }} colapsado={sidebarColapsado}>Categorías</NavItem><NavItem icon={Tag} active={vistaPanel === 'bulk-price-update'} onClick={(e) => { e.preventDefault(); setVistaPanel('bulk-price-update'); setVista('panel'); }} colapsado={sidebarColapsado}>Actualizar Precios</NavItem><NavItem icon={Truck} active={vistaPanel === 'providers'} onClick={(e) => { e.preventDefault(); setVistaPanel('providers'); setVista('panel'); }} colapsado={sidebarColapsado}>Proveedores</NavItem></>)}</NavGroup>
-                        {esAdminOSuperAdmin && (<NavGroup title="Administración" colapsado={sidebarColapsado}><NavItem icon={Users} active={vistaPanel === 'clients'} onClick={(e) => { e.preventDefault(); setVistaPanel('clients'); setVista('panel'); }} colapsado={sidebarColapsado}>Clientes</NavItem>{esSuperAdmin && <NavItem icon={UserCog} active={vistaPanel === 'users'} onClick={(e) => { e.preventDefault(); setVistaPanel('users'); setVista('panel'); }} colapsado={sidebarColapsado}>Usuarios</NavItem>}<NavItem icon={CreditCard} active={vistaPanel === 'payment-methods'} onClick={(e) => { e.preventDefault(); setVistaPanel('payment-methods'); setVista('panel'); }} colapsado={sidebarColapsado}>Métodos de Pago</NavItem></NavGroup>)}
-                    </nav>
-                    <div className="p-2 mt-auto border-t border-gray-700 space-y-2">
-                        <a href="#" onClick={() => setVista('pos')} className={`flex items-center justify-center w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition duration-300`} title="Ir al Punto de Venta"><ShoppingCart className={`h-5 w-5 flex-shrink-0 ${sidebarColapsado ? '' : 'mr-2'}`} />{!sidebarColapsado && 'Punto de Venta'}</a>
-                        <button onClick={() => setSidebarColapsado(!sidebarColapsado)} className="w-full flex items-center justify-center gap-2 text-gray-400 hover:bg-gray-700 hover:text-white py-2 px-4 rounded-lg transition-colors duration-200" title={sidebarColapsado ? 'Expandir menú' : 'Colapsar menú'}>{sidebarColapsado ? <ChevronsRight size={20} /> : <ChevronsLeft size={20} />}</button>
-                    </div>
-                </aside>
-            )}
+                {/* --- INICIO DE CAMBIOS --- */}
+                {/* 2. Usamos el nuevo logo y cambiamos el texto */}
+                <div className="p-4 border-b border-gray-700 h-[65px] flex items-center justify-center">
+                    <h1 className="text-2xl font-bold whitespace-nowrap">
+                        {sidebarColapsado ? <LogoIcon /> : <>Nexus<span className="font-light">POS</span></>}
+                    </h1>
+                </div>
+                {/* --- FIN DE CAMBIOS --- */}
+                <nav className="flex-1 px-2 py-4 space-y-2 overflow-y-auto">
+                    <NavItem icon={LayoutDashboard} active={vistaPanel === 'dashboard'} onClick={(e) => { e.preventDefault(); setVistaPanel('dashboard'); setVista('panel'); }} colapsado={sidebarColapsado}>Dashboard</NavItem>
+                    {esAdminOSuperAdmin && (<NavGroup title="Gestión de Ventas" colapsado={sidebarColapsado}><NavItem icon={Receipt} active={vistaPanel === 'sales'} onClick={(e) => { e.preventDefault(); setVistaPanel('sales'); setVista('panel'); }} colapsado={sidebarColapsado}>Ventas</NavItem><NavItem icon={Archive} active={vistaPanel === 'cash-count'} onClick={(e) => { e.preventDefault(); setVistaPanel('cash-count'); setVista('panel'); }} colapsado={sidebarColapsado}>Cierre de Caja</NavItem><NavItem icon={BarChart2} active={vistaPanel === 'reports'} onClick={(e) => { e.preventDefault(); setVistaPanel('reports'); setVista('panel'); }} colapsado={sidebarColapsado}>Reportes</NavItem></NavGroup>)}
+                    <NavGroup title="Inventario" colapsado={sidebarColapsado}><NavItem icon={Package} active={vistaPanel === 'products'} onClick={(e) => { e.preventDefault(); setVistaPanel('products'); setVista('panel'); }} colapsado={sidebarColapsado}>Productos</NavItem>{esAdminOSuperAdmin && (<><NavItem icon={Folder} active={vistaPanel === 'categories'} onClick={(e) => { e.preventDefault(); setVistaPanel('categories'); setVista('panel'); }} colapsado={sidebarColapsado}>Categorías</NavItem><NavItem icon={Tag} active={vistaPanel === 'bulk-price-update'} onClick={(e) => { e.preventDefault(); setVistaPanel('bulk-price-update'); setVista('panel'); }} colapsado={sidebarColapsado}>Actualizar Precios</NavItem><NavItem icon={Truck} active={vistaPanel === 'providers'} onClick={(e) => { e.preventDefault(); setVistaPanel('providers'); setVista('panel'); }} colapsado={sidebarColapsado}>Proveedores</NavItem></>)}</NavGroup>
+                    {esAdminOSuperAdmin && (<NavGroup title="Administración" colapsado={sidebarColapsado}><NavItem icon={Users} active={vistaPanel === 'clients'} onClick={(e) => { e.preventDefault(); setVistaPanel('clients'); setVista('panel'); }} colapsado={sidebarColapsado}>Clientes</NavItem>{esSuperAdmin && <NavItem icon={UserCog} active={vistaPanel === 'users'} onClick={(e) => { e.preventDefault(); setVistaPanel('users'); setVista('panel'); }} colapsado={sidebarColapsado}>Usuarios</NavItem>}<NavItem icon={CreditCard} active={vistaPanel === 'payment-methods'} onClick={(e) => { e.preventDefault(); setVistaPanel('payment-methods'); setVista('panel'); }} colapsado={sidebarColapsado}>Métodos de Pago</NavItem></NavGroup>)}
+                </nav>
+                <div className="p-2 mt-auto border-t border-gray-700 space-y-2">
+                    <a href="#" onClick={() => setVista('pos')} className={`flex items-center justify-center w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition duration-300`} title="Ir al Punto de Venta"><ShoppingCart className={`h-5 w-5 flex-shrink-0 ${sidebarColapsado ? '' : 'mr-2'}`} />{!sidebarColapsado && 'Punto de Venta'}</a>
+                    <button onClick={() => setSidebarColapsado(!sidebarColapsado)} className="w-full flex items-center justify-center gap-2 text-gray-400 hover:bg-gray-700 hover:text-white py-2 px-4 rounded-lg transition-colors duration-200" title={sidebarColapsado ? 'Expandir menú' : 'Colapsar menú'}>{sidebarColapsado ? <ChevronsRight size={20} /> : <ChevronsLeft size={20} />}</button>
+                </div>
+            </aside>
+        )}
             <main className="flex-1 flex flex-col bg-gray-100 rounded-l-xl overflow-hidden">
                 <header className={`p-4 flex justify-between items-center flex-shrink-0 z-10 transition-colors duration-300 ${vista === 'pos' ? 'bg-gray-800 text-white rounded-tl-xl' : 'bg-white text-gray-800 shadow-sm rounded-tl-xl'}`}>
                     <div className="flex-1">{vista === 'pos' && puedeVerPanel && (<Button onClick={() => setVista('panel')} variant="secondary" className="bg-gray-700 text-white hover:bg-gray-600">Volver al Panel</Button>)}</div>

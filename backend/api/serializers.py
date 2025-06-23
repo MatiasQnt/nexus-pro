@@ -22,7 +22,7 @@ class ProviderSerializer(serializers.ModelSerializer):
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
-        fields = ['id', 'name', 'is_active']
+        fields = ['id', 'name', 'description','is_active']
 
 class ClientSerializer(serializers.ModelSerializer):
     class Meta:

@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 
 const API_URL = 'http://127.0.0.1:8000/api';
 
-// --- COMPONENTES Y LÓGICA DE FILTRADO ---
+// --- COMPONENTES Y LÓGICA DE FILTRADO (Sin cambios) ---
 const FiltroBusquedaProveedor = ({ setFiltros, filtros }) => {
     const handleBusquedaChange = (e) => setFiltros({ ...filtros, busqueda: e.target.value });
     return (
@@ -24,7 +24,6 @@ const logicaFiltroProveedores = (proveedores, filtros) => {
 };
 
 const FormularioProveedor = ({ proveedor, onGuardar, onCancelar }) => {
-    // Se añade is_active al estado del formulario
     const [formData, setFormData] = useState({ ...proveedor, is_active: proveedor.is_active !== undefined ? proveedor.is_active : true });
 
     const handleChange = (e) => {
@@ -39,18 +38,17 @@ const FormularioProveedor = ({ proveedor, onGuardar, onCancelar }) => {
                 <input id="name" name="name" value={formData.name} onChange={handleChange} placeholder="Ej: Distribuidora S.A." className="p-2 border rounded-lg w-full" required />
             </div>
             <div>
-                <label htmlFor="contact_person" className="block text-sm font-medium text-gray-700 mb-1">Persona de Contacto (opcional)</label>
-                <input id="contact_person" name="contact_person" value={formData.contact_person || ''} onChange={handleChange} placeholder="Ej: Juan Pérez" className="p-2 border rounded-lg w-full" />
+                <label htmlFor="contact_person" className="block text-sm font-medium text-gray-700 mb-1">Persona de Contacto</label>
+                <input id="contact_person" name="contact_person" value={formData.contact_person || ''} onChange={handleChange} placeholder="Ej: Juan Pérez" className="p-2 border rounded-lg w-full" required />
             </div>
             <div>
-                <label htmlFor="phone_number" className="block text-sm font-medium text-gray-700 mb-1">Teléfono (opcional)</label>
-                <input id="phone_number" name="phone_number" value={formData.phone_number || ''} onChange={handleChange} placeholder="Ej: 2284 123456" className="p-2 border rounded-lg w-full" />
+                <label htmlFor="phone_number" className="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
+                <input id="phone_number" name="phone_number" value={formData.phone_number || ''} onChange={handleChange} placeholder="Ej: 2284123456" className="p-2 border rounded-lg w-full" required />
             </div>
             <div>
                 <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">Email (opcional)</label>
                 <input id="email" name="email" type="email" value={formData.email || ''} onChange={handleChange} placeholder="Ej: contacto@empresa.com" className="p-2 border rounded-lg w-full" />
             </div>
-            {/* Checkbox de estado */}
             <div className="pt-2">
                 <label className="flex items-center gap-2">
                     <input id="is_active" type="checkbox" name="is_active" checked={formData.is_active} onChange={handleChange} className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
@@ -80,7 +78,6 @@ const GestionProveedores = ({ proveedores, obtenerDatos }) => {
     });
 
     const abrirModalNuevo = () => {
-        // Se añade is_active al crear un nuevo proveedor
         setProveedorEditando({ name: '', contact_person: '', phone_number: '', email: '', is_active: true });
         setModalAbierto(true);
     };
@@ -113,33 +110,44 @@ const GestionProveedores = ({ proveedores, obtenerDatos }) => {
         );
     };
 
-    const borrarProveedor = async (idProveedor) => {
-        const promesaDeBorrado = new Promise(async (resolve, reject) => {
-            try {
-                const response = await fetch(`${API_URL}/providers/${idProveedor}/`, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + String(tokensAuth.access) } });
-                if (response.status === 204) {
-                    resolve("Proveedor eliminado con éxito.");
-                } else if (response.ok) {
-                    const data = await response.json();
-                    resolve(data.detail);
-                } else {
-                    const errorData = await response.json();
-                    reject(new Error(errorData.detail || "No se pudo eliminar."));
+    // --- INICIO DE CAMBIOS ---
+    const borrarProveedor = (proveedor) => {
+        const ejecutarBorrado = () => {
+            const promesa = fetch(`${API_URL}/providers/${proveedor.id}/`, {
+                method: 'DELETE',
+                headers: { 'Authorization': 'Bearer ' + String(tokensAuth.access) },
+            }).then(async (res) => {
+                if (res.status === 204) {
+                    return { message: "Proveedor eliminado con éxito." };
                 }
-            } catch (err) {
-                reject(err);
-            }
-        });
+                if (res.ok) {
+                    const data = await res.json();
+                    return { message: data.detail || "La operación se completó." };
+                }
+                const errorData = await res.json();
+                return Promise.reject(errorData);
+            });
 
-        toast.promise(promesaDeBorrado, {
-            loading: 'Eliminando...',
-            success: (mensaje) => {
-                obtenerDatos();
-                return mensaje;
+            toast.promise(promesa, {
+                loading: 'Procesando...',
+                success: (data) => {
+                    obtenerDatos();
+                    return data.message;
+                },
+                error: (err) => `Error: ${err.detail || JSON.stringify(err)}`,
+            });
+        };
+
+        toast("Confirmar Eliminación", {
+            description: `¿Estás seguro de que quieres eliminar al proveedor "${proveedor.name}"?`,
+            action: {
+                label: "Sí, eliminar",
+                onClick: ejecutarBorrado,
             },
-            error: (err) => `Error: ${err.message}`
+            cancel: { label: "No" },
         });
     };
+    // --- FIN DE CAMBIOS ---
 
     return (
         <div className="space-y-6">
@@ -175,7 +183,9 @@ const GestionProveedores = ({ proveedores, obtenerDatos }) => {
                                 </td>
                                 <td className="px-6 py-4 flex gap-2">
                                     <Button onClick={() => abrirModalEditar(proveedor)} variant="secondary" size="sm" icon={Edit} />
-                                    <Button onClick={() => borrarProveedor(proveedor.id)} variant="danger" size="sm" icon={Trash2} />
+                                    {/* --- INICIO DE CAMBIOS --- */}
+                                    <Button onClick={() => borrarProveedor(proveedor)} variant="danger" size="sm" icon={Trash2} />
+                                    {/* --- FIN DE CAMBIOS --- */}
                                 </td>
                             </tr>
                         )}

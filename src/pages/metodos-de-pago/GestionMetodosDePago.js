@@ -90,33 +90,44 @@ const GestionMetodosDePago = ({ metodosDePago, obtenerDatos }) => {
         });
     };
     
-    const borrarMetodo = async (idMetodo) => {
-        const promesaDeBorrado = new Promise(async (resolve, reject) => {
-            try {
-                const response = await fetch(`${API_URL}/admin/payment-methods/${idMetodo}/`, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + String(tokensAuth.access) } });
-                if (response.status === 204) {
-                    resolve("Método de pago eliminado con éxito.");
-                } else if (response.ok) {
-                    const data = await response.json();
-                    resolve(data.detail);
-                } else {
-                    const errorData = await response.json();
-                    reject(new Error(errorData.detail || "No se pudo procesar la solicitud."));
+    // --- INICIO DE CAMBIOS ---
+    const borrarMetodo = (metodo) => {
+        const ejecutarBorrado = () => {
+            const promesa = fetch(`${API_URL}/admin/payment-methods/${metodo.id}/`, {
+                method: 'DELETE',
+                headers: { 'Authorization': 'Bearer ' + String(tokensAuth.access) },
+            }).then(async (res) => {
+                if (res.status === 204) {
+                    return { message: "Método de pago eliminado con éxito." };
                 }
-            } catch (err) {
-                reject(err);
-            }
-        });
+                if (res.ok) {
+                    const data = await res.json();
+                    return { message: data.detail || "La operación se completó." };
+                }
+                const errorData = await res.json();
+                return Promise.reject(errorData);
+            });
 
-        toast.promise(promesaDeBorrado, {
-            loading: 'Eliminando...',
-            success: (mensaje) => {
-                obtenerDatos();
-                return mensaje;
+            toast.promise(promesa, {
+                loading: 'Procesando...',
+                success: (data) => {
+                    obtenerDatos();
+                    return data.message;
+                },
+                error: (err) => `Error: ${err.detail || JSON.stringify(err)}`,
+            });
+        };
+
+        toast("Confirmar Eliminación", {
+            description: `¿Estás seguro de que quieres eliminar el método de pago "${metodo.name}"?`,
+            action: {
+                label: "Sí, eliminar",
+                onClick: ejecutarBorrado,
             },
-            error: (err) => `Error: ${err.message}`
+            cancel: { label: "No" },
         });
     };
+    // --- FIN DE CAMBIOS ---
     
     return (
         <div className="space-y-6">
@@ -150,7 +161,9 @@ const GestionMetodosDePago = ({ metodosDePago, obtenerDatos }) => {
                                 </td>
                                 <td className="px-6 py-4 flex gap-2">
                                     <Button onClick={() => abrirModalEditar(pm)} variant="secondary" size="sm" icon={Edit} />
-                                    <Button onClick={() => borrarMetodo(pm.id)} variant="danger" size="sm" icon={Trash2} />
+                                    {/* --- INICIO DE CAMBIOS --- */}
+                                    <Button onClick={() => borrarMetodo(pm)} variant="danger" size="sm" icon={Trash2} />
+                                    {/* --- FIN DE CAMBIOS --- */}
                                 </td>
                             </tr>
                         )}
