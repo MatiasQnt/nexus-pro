@@ -127,8 +127,11 @@ const ActualizacionMasivaPrecios = ({ productos, proveedores, obtenerDatos }) =>
                     <>
                         <Table 
                             headers={[
-                                <input type="checkbox" onChange={seleccionarTodos} checked={productosSeleccionados.size > 0 && productosFiltrados.length > 0 && productosSeleccionados.size === productosFiltrados.length}/>, 
-                                'SKU', 'Nombre', 'Costo Actual', 'Venta Actual'
+                                { title: <input type="checkbox" onChange={seleccionarTodos} checked={productosSeleccionados.size > 0 && productosFiltrados.length > 0 && productosSeleccionados.size === productosFiltrados.length}/> },
+                                { title: 'SKU' },
+                                { title: 'Nombre' },
+                                { title: 'Costo Actual' },
+                                { title: 'Venta Actual' }
                             ]} 
                             data={datosPaginados} 
                             renderRow={(p) => (

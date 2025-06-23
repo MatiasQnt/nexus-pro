@@ -3,7 +3,7 @@ import { Eye, XCircle } from 'lucide-react';
 import { ContextoAuth } from '../../context/AuthContext';
 import { Button, Modal, Table } from '../../components/ui/ComponentesUI';
 import { useFiltrosYBusqueda } from '../../hooks/useFiltrosYBusqueda';
-import { toast } from 'sonner'; 
+import { toast } from 'sonner';
 
 const API_URL = 'http://127.0.0.1:8000/api';
 
@@ -64,7 +64,7 @@ const GestionVentas = ({ ventas, obtenerDatos }) => {
     const cancelarVenta = async (idVenta) => {
         const ejecutarCancelacion = () => {
             const promesa = fetch(`${API_URL}/sales/${idVenta}/cancel/`, {
-                method: 'PATCH', 
+                method: 'PATCH',
                 headers: { 'Authorization': 'Bearer ' + String(tokensAuth.access) }
             }).then(res => {
                 if (!res.ok) return res.json().then(err => Promise.reject(err));
@@ -92,6 +92,75 @@ const GestionVentas = ({ ventas, obtenerDatos }) => {
             },
         });
     };
+    
+    const renderDetalleVenta = () => {
+        if (!ventaSeleccionada) return null;
+
+        const subtotal = parseFloat(ventaSeleccionada.total_amount);
+        const totalFinal = parseFloat(ventaSeleccionada.final_amount);
+        const ajuste = totalFinal - subtotal;
+        const porcentajeAjuste = subtotal > 0 ? (Math.abs(ajuste) / subtotal) * 100 : 0;
+
+        const FilaResumen = ({ label, value, className = '', valueClassName = '' }) => (
+            <div className={`flex justify-between items-center py-2 ${className}`}>
+                <span className="text-sm">{label}</span>
+                <span className={`text-sm font-medium ${valueClassName}`}>{value}</span>
+            </div>
+        );
+
+        return (
+            <div className="text-gray-800">
+                <div className="mb-4">
+                    <h3 className="text-2xl font-bold">Detalle de Venta</h3>
+                    <p className="text-sm text-gray-500">
+                        ID: #{ventaSeleccionada.id} &bull; {new Date(ventaSeleccionada.date_time).toLocaleString('es-AR')}
+                    </p>
+                </div>
+
+                <div className="flex justify-between text-xs font-bold text-gray-500 uppercase pb-2 border-b">
+                    <span className="w-8">Cant.</span>
+                    <span className="flex-1 ml-4">Producto</span>
+                    <span className="w-24 text-right">Subtotal</span>
+                </div>
+
+                <div className="space-y-2 py-2 max-h-48 overflow-y-auto">
+                    {ventaSeleccionada.details.map(detalle => (
+                        <div key={detalle.product.id} className="flex justify-between items-start py-1">
+                             <span className="w-8 text-sm text-gray-600">{detalle.quantity}x</span>
+                             <div className="flex-1 ml-4">
+                                <p className="font-medium text-sm">{detalle.product.name}</p>
+                                {detalle.product.description && <p className="text-xs text-gray-500">{detalle.product.description}</p>}
+                             </div>
+                             <span className="w-24 text-right text-sm font-semibold">${(detalle.quantity * parseFloat(detalle.unit_price)).toFixed(2)}</span>
+                        </div>
+                    ))}
+                </div>
+
+                <div className="mt-4 pt-4 border-t space-y-1">
+                    <FilaResumen label="Subtotal" value={`$${subtotal.toFixed(2)}`} valueClassName="text-gray-800" />
+                    <FilaResumen label="Método de Pago" value={ventaSeleccionada.payment_method} valueClassName="text-gray-800" />
+                    
+                    {ajuste !== 0 && (
+                        <FilaResumen 
+                            label={ajuste < 0 ? `Descuento (${porcentajeAjuste.toFixed(2)}%)` : `Recargo (${porcentajeAjuste.toFixed(2)}%)`}
+                            value={`${ajuste.toFixed(2)}`}
+                            className={ajuste < 0 ? 'text-green-600' : 'text-red-600'}
+                            valueClassName="font-bold"
+                        />
+                    )}
+                    
+                    <div className="flex justify-between items-center pt-3 mt-2 border-t">
+                        <span className="text-lg font-bold">Total Final</span>
+                        <span className="text-lg font-bold">${totalFinal.toFixed(2)}</span>
+                    </div>
+                </div>
+
+                 <div className="mt-6 flex justify-end">
+                    <Button onClick={() => setVentaSeleccionada(null)} variant="secondary">Cerrar</Button>
+                </div>
+            </div>
+        );
+    };
 
     return (
         <div className="space-y-6">
@@ -102,7 +171,15 @@ const GestionVentas = ({ ventas, obtenerDatos }) => {
             {datosPaginados.length > 0 ? (
                 <>
                     <Table
-                        headers={['ID', 'Fecha', 'Usuario', 'Items', 'Total', 'Estado', 'Acciones']}
+                        headers={[
+                            { title: 'ID' },
+                            { title: 'Fecha' },
+                            { title: 'Usuario' },
+                            { title: 'Items' },
+                            { title: 'Total' },
+                            { title: 'Estado' },
+                            { title: 'Acciones' }
+                        ]}
                         data={datosPaginados}
                         renderRow={(venta) => (
                             <tr key={venta.id} className="bg-white border-b hover:bg-gray-50">
@@ -136,25 +213,9 @@ const GestionVentas = ({ ventas, obtenerDatos }) => {
                 </div>
             )}
 
-            {ventaSeleccionada && (
-                <Modal isOpen={!!ventaSeleccionada} onClose={() => setVentaSeleccionada(null)} title={`Detalle de Venta #${ventaSeleccionada.id}`}>
-                    <div>
-                        <ul className="space-y-2">
-                            {ventaSeleccionada.details.map(detalle => (
-                                <li key={detalle.product.id} className="flex justify-between items-center p-2 bg-gray-50 rounded-md">
-                                    <span>{detalle.quantity} x {detalle.product.name}</span>
-                                    <span>${(detalle.quantity * parseFloat(detalle.unit_price)).toFixed(2)}</span>
-                                </li>
-                            ))}
-                        </ul>
-                        <div className="mt-4 pt-2 border-t text-right">
-                            <p>Subtotal: ${parseFloat(ventaSeleccionada.total_amount).toFixed(2)}</p>
-                            <p>Método de Pago: {ventaSeleccionada.payment_method}</p>
-                            <p className="font-bold text-lg">Total Final: ${parseFloat(ventaSeleccionada.final_amount).toFixed(2)}</p>
-                        </div>
-                    </div>
-                </Modal>
-            )}
+            <Modal isOpen={!!ventaSeleccionada} onClose={() => setVentaSeleccionada(null)}>
+                {renderDetalleVenta()}
+            </Modal>
         </div>
     );
 };

@@ -330,7 +330,7 @@ class DashboardReportsView(APIView):
         
         # CAMBIO: Productos con bajo stock ahora solo muestra los activos
         low_stock_limit = 5
-        low_stock_products_query = Product.objects.filter(stock__lte=low_stock_limit, stock__gt=0, estado='activo').order_by('stock').values('id', 'name', 'stock')[:10]
+        low_stock_products_query = Product.objects.filter(stock__lte=low_stock_limit, estado='activo').order_by('stock').values('id', 'name', 'stock')[:10]
 
         sales_by_payment_method = Sale.objects.filter(date_time__date__gte=last_30_days_start, status='Completada').values('payment_method__name').annotate(total=Sum('final_amount')).order_by('-total')
         daily_sales = Sale.objects.filter(date_time__date__gte=last_30_days_start, status='Completada').annotate(day=TruncDay('date_time')).values('day').annotate(total_sales=Sum('final_amount')).order_by('day')

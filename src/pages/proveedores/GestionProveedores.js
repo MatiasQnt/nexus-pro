@@ -153,7 +153,14 @@ const GestionProveedores = ({ proveedores, obtenerDatos }) => {
             {datosPaginados.length > 0 ? (
                 <>
                     <Table
-                        headers={['Nombre', 'Contacto', 'Teléfono', 'Email', 'Estado', 'Acciones']}
+                        headers={[
+                            { title: 'Nombre' },
+                            { title: 'Contacto' },
+                            { title: 'Teléfono' },
+                            { title: 'Email' },
+                            { title: 'Estado' },
+                            { title: 'Acciones' }
+                        ]}
                         data={datosPaginados}
                         renderRow={(proveedor) => (
                             <tr key={proveedor.id} className={`border-b hover:bg-gray-50 ${!proveedor.is_active ? 'bg-gray-100 text-gray-500' : 'bg-white'}`}>

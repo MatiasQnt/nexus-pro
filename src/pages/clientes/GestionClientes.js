@@ -156,7 +156,14 @@ const GestionClientes = ({ clientes, obtenerDatos }) => {
             {datosPaginados.length > 0 ? (
                 <>
                     <Table
-                        headers={['Nombre', 'Teléfono', 'Email', 'Cumpleaños', 'Estado', 'Acciones']}
+                        headers={[
+                            { title: 'Nombre' },
+                            { title: 'Teléfono' },
+                            { title: 'Email' },
+                            { title: 'Cumpleaños' },
+                            { title: 'Estado' },
+                            { title: 'Acciones' }
+                        ]}
                         data={datosPaginados}
                         renderRow={(cliente) => (
                             <tr key={cliente.id} className={`border-b hover:bg-gray-50 ${!cliente.is_active ? 'bg-gray-100 text-gray-500' : 'bg-white'}`}>

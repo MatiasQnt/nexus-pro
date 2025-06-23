@@ -203,7 +203,12 @@ const GestionUsuarios = ({ usuarios, grupos, obtenerDatos }) => {
             
             {usuarios.length > 0 ? (
                 <Table 
-                    headers={['Username', 'Email', 'Rol', 'Acciones']} 
+                    headers={[
+                        { title: 'Username' },
+                        { title: 'Email' },
+                        { title: 'Rol' },
+                        { title: 'Acciones' }
+                    ]} 
                     data={usuarios}
                     renderRow={(u) => (
                         <tr key={u.id} className="bg-white border-b hover:bg-gray-50">

@@ -40,7 +40,7 @@ const PaginaLogin = () => {
     return (
         <div className="bg-gray-100 min-h-screen flex items-center justify-center">
             <Card className="text-center w-full max-w-sm">
-                <h1 className="text-3xl font-bold mb-2 text-indigo-600">MiNegocio<span className="font-light">PRO</span></h1>
+                <h1 className="text-3xl font-bold mb-2 text-indigo-600">Nexus<span className="font-light">POS</span></h1>
                 <p className="text-gray-500 mb-6">Inicia sesión para continuar</p>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <input 

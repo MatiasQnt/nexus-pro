@@ -145,7 +145,11 @@ const GestionCategorias = ({ categorias, obtenerDatos }) => {
             {datosPaginados.length > 0 ? (
                 <>
                     <Table 
-                        headers={['Nombre', 'Estado', 'Acciones']} 
+                        headers={[
+                            { title: 'Nombre' },
+                            { title: 'Estado' },
+                            { title: 'Acciones' }
+                        ]} 
                         data={datosPaginados}
                         renderRow={(cat) => (
                             <tr key={cat.id} className={`border-b hover:bg-gray-50 ${!cat.is_active ? 'bg-gray-100 text-gray-500' : 'bg-white'}`}>

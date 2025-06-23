@@ -130,7 +130,12 @@ const GestionMetodosDePago = ({ metodosDePago, obtenerDatos }) => {
             {datosPaginados.length > 0 ? (
                 <>
                     <Table
-                        headers={['Nombre', 'Ajuste (%)', 'Estado', 'Acciones']}
+                        headers={[
+                            { title: 'Nombre' },
+                            { title: 'Ajuste (%)' },
+                            { title: 'Estado' },
+                            { title: 'Acciones' }
+                        ]}
                         data={datosPaginados}
                         renderRow={(pm) => (
                             <tr key={pm.id} className={`border-b hover:bg-gray-50 ${!pm.is_active ? 'bg-gray-100 text-gray-500' : 'bg-white'}`}>

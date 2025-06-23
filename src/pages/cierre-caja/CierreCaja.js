@@ -64,14 +64,14 @@ const CierreCaja = () => {
             const response = await fetch(`${API_URL}/cash-count/`, { headers: { 'Authorization': 'Bearer ' + String(tokensAuth.access) } });
             const responseData = await response.json();
             if (!response.ok) {
-                 if (response.status === 409) {
-                     setError(responseData.message);
-                     setDatos({ history: responseData.history || [] }); 
-                 } else {
-                     throw new Error(responseData.detail || 'No se pudieron cargar los datos.');
-                 }
+                   if (response.status === 409) {
+                        setError(responseData.message);
+                        setDatos({ history: responseData.history || [] }); 
+                   } else {
+                        throw new Error(responseData.detail || 'No se pudieron cargar los datos.');
+                   }
             } else {
-                 setDatos(responseData);
+                   setDatos(responseData);
             }
         } catch (error) {
             setError(error.message);
@@ -159,29 +159,35 @@ const CierreCaja = () => {
                  {FiltrosUI}
                  
                  {datosPaginados.length > 0 ? (
-                    <>
-                        <Table
-                            headers={['Fecha', 'Monto Esperado', 'Monto Contado', 'Diferencia', 'Usuario']}
-                            data={datosPaginados}
-                            renderRow={(c) => (
-                                <tr key={c.id} className="bg-white border-b hover:bg-gray-50">
-                                    <td className="px-6 py-4">{new Date(c.date + 'T00:00:00').toLocaleDateString('es-AR')}</td>
-                                    <td className="px-6 py-4">${parseFloat(c.expected_amount).toFixed(2)}</td>
-                                    <td className="px-6 py-4">${parseFloat(c.counted_amount).toFixed(2)}</td>
-                                    <td className={`px-6 py-4 font-bold ${c.difference > 0 ? 'text-green-600' : c.difference < 0 ? 'text-red-600' : 'text-gray-800'}`}>
-                                        {c.difference > 0 ? `+${parseFloat(c.difference).toFixed(2)}` : parseFloat(c.difference).toFixed(2)}
-                                    </td>
-                                    <td className="px-6 py-4">{c.user}</td>
-                                </tr>
-                            )}
-                        />
-                        {PaginacionUI}
-                    </>
+                     <>
+                         <Table
+                             headers={[
+                                 { title: 'Fecha' },
+                                 { title: 'Monto Esperado' },
+                                 { title: 'Monto Contado' },
+                                 { title: 'Diferencia' },
+                                 { title: 'Usuario' }
+                             ]}
+                             data={datosPaginados}
+                             renderRow={(c) => (
+                                 <tr key={c.id} className="bg-white border-b hover:bg-gray-50">
+                                     <td className="px-6 py-4">{new Date(c.date + 'T00:00:00').toLocaleDateString('es-AR')}</td>
+                                     <td className="px-6 py-4">${parseFloat(c.expected_amount).toFixed(2)}</td>
+                                     <td className="px-6 py-4">${parseFloat(c.counted_amount).toFixed(2)}</td>
+                                     <td className={`px-6 py-4 font-bold ${c.difference > 0 ? 'text-green-600' : c.difference < 0 ? 'text-red-600' : 'text-gray-800'}`}>
+                                         {c.difference > 0 ? `+${parseFloat(c.difference).toFixed(2)}` : parseFloat(c.difference).toFixed(2)}
+                                     </td>
+                                     <td className="px-6 py-4">{c.user}</td>
+                                 </tr>
+                             )}
+                         />
+                         {PaginacionUI}
+                     </>
                  ) : (
-                    <div className="text-center py-16 px-6 bg-white rounded-lg shadow">
-                        <h3 className="text-lg font-semibold text-gray-700">No se encontraron cierres de caja</h3>
-                        <p className="text-gray-500 mt-1">Intenta ajustar el rango de fechas para encontrar resultados.</p>
-                    </div>
+                     <div className="text-center py-16 px-6 bg-white rounded-lg shadow">
+                         <h3 className="text-lg font-semibold text-gray-700">No se encontraron cierres de caja</h3>
+                         <p className="text-gray-500 mt-1">Intenta ajustar el rango de fechas para encontrar resultados.</p>
+                     </div>
                  )}
             </div>
         </div>
