@@ -1,5 +1,5 @@
-# api/views.py
-
+import requests
+import logging
 import csv
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -7,7 +7,7 @@ from django.db import transaction
 from django.db.models import Count, Sum, F, ProtectedError
 from django.db.models.functions import TruncHour ,TruncDay, TruncMonth, TruncWeek, ExtractHour
 from django.contrib.auth.models import User, Group
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill
@@ -33,15 +33,59 @@ from .permissions import (
     IsSuperAdminOrAdmin, CanViewPanel, CanCreateSales
 )
 
+logger = logging.getLogger(__name__)
+
+def get_dolar_cotizaciones(request):
+    """
+    Esta vista obtiene las cotizaciones del dólar desde APIs externas,
+    las consolida y las devuelve como un solo JSON.
+    """
+    try:
+        # Hacemos las dos peticiones en paralelo para más eficiencia
+        # (Aunque en Python se ejecutan secuencialmente, el concepto es tenerlas juntas)
+        
+        # Petición a Bluelytics para Oficial y Blue
+        bluelytics_res = requests.get('https://api.bluelytics.com.ar/v2/latest')
+        bluelytics_res.raise_for_status()  # Esto lanzará un error si la petición falla (ej: 404, 500)
+        bluelytics_data = bluelytics_res.json()
+
+        # Petición a DolarAPI para MEP
+        dolarapi_res = requests.get('https://dolarapi.com/v1/dolares')
+        dolarapi_res.raise_for_status()
+        dolarapi_data = dolarapi_res.json()
+
+        # Buscamos el Dólar MEP (Bolsa) en la respuesta
+        dolar_mep_raw = next((d for d in dolarapi_data if d.get("casa") == "bolsa"), None)
+
+        # Consolidamos toda la información en un solo diccionario
+        consolidated_data = {
+            'blue': bluelytics_data.get('blue'),
+            'oficial': bluelytics_data.get('oficial'),
+            'mep': {
+                'value_buy': dolar_mep_raw.get('compra') if dolar_mep_raw else None,
+                'value_sell': dolar_mep_raw.get('venta') if dolar_mep_raw else None,
+            } if dolar_mep_raw else None,
+            'last_update': bluelytics_data.get('last_update')
+        }
+
+        return JsonResponse(consolidated_data)
+
+    except requests.exceptions.RequestException as e:
+        # Si alguna de las APIs externas falla, devolvemos un error
+        logger.error(f"Error al contactar APIs de cotizaciones: {e}")
+        return JsonResponse({'error': 'No se pudieron obtener las cotizaciones externas'}, status=503) # 503: Service Unavailable
+    except Exception as e:
+        logger.error(f"Error inesperado en la vista de cotizaciones: {e}")
+        return JsonResponse({'error': 'Ocurrió un error interno en el servidor'}, status=500)
+
+
 class MyTokenObtainPairView(TokenObtainPairView):
     serializer_class = MyTokenObtainPairSerializer
 
 class ProductViewSet(viewsets.ModelViewSet):
-    # --- INICIO DE CAMBIOS ---
     queryset = Product.objects.all().order_by('name')
     serializer_class = ProductSerializer
 
-    # CAMBIO: Modificamos get_queryset para permitir el filtrado por estado
     def get_queryset(self):
         queryset = super().get_queryset()
         estado = self.request.query_params.get('estado')
@@ -50,7 +94,6 @@ class ProductViewSet(viewsets.ModelViewSet):
         return queryset
 
     def get_permissions(self):
-        # CAMBIO: Añadimos la nueva acción 'popular' a las acciones permitidas
         if self.action in ['list', 'retrieve', 'update_stock', 'popular_for_pos']:
             self.permission_classes = [IsAuthenticated, CanViewPanel]
         elif self.action in ['create', 'update', 'partial_update', 'destroy']:
@@ -59,7 +102,6 @@ class ProductViewSet(viewsets.ModelViewSet):
             self.permission_classes = [IsAuthenticated]
         return super().get_permissions()
 
-    # CAMBIO: Sobrescribimos el método destroy para la lógica de soft-delete
     def destroy(self, request, *args, **kwargs):
         product = self.get_object()
         # Verificamos si el producto ha sido usado en alguna venta
@@ -76,7 +118,6 @@ class ProductViewSet(viewsets.ModelViewSet):
             product.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
 
-    # CAMBIO: Nueva acción para obtener productos populares para el POS
     @action(detail=False, methods=['get'], url_path='popular-for-pos')
     def popular_for_pos(self, request):
         """
@@ -383,6 +424,10 @@ class DashboardReportsView(APIView):
 
         return Response({
             'kpis': kpis,
+            # --- INICIO DEL CAMBIO ---
+            # Agregamos la lista de productos con bajo stock a la respuesta
+            'low_stock_products': list(low_stock_products_query),
+            # --- FIN DEL CAMBIO ---
             'charts': chart_data,
             'rankings': rankings_data,
             'other_reports': other_reports

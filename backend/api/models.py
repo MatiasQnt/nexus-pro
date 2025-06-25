@@ -37,13 +37,13 @@ class Product(models.Model):
         ('inactivo', 'Inactivo'),
     ]
 
-    sku = models.CharField(max_length=50, unique=True, verbose_name='SKU / Código')
+    sku = models.CharField(max_length=50, unique=True, blank=True, null=True, verbose_name='SKU / Código')
     name = models.CharField(max_length=200, verbose_name='Nombre')
     description = models.TextField(blank=True, null=True, verbose_name='Descripción')
     cost_price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name='Precio de Costo')
     sale_price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name='Precio de Venta')
     stock = models.PositiveIntegerField(default=1, verbose_name='Stock Actual')
-    category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, verbose_name='Categoría')
+    category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='Categoría')
     provider = models.ForeignKey(Provider, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='Proveedor')
     estado = models.CharField(
         max_length=10, 

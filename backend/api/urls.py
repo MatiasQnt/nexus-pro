@@ -4,10 +4,9 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     ProductViewSet, CategoryViewSet, ProviderViewSet, ClientViewSet,
     SaleViewSet, ReportsView, UserViewSet, GroupViewSet, DailyCashCountView,
-    BulkPriceUpdateView, MyTokenObtainPairView,
-    PaymentMethodViewSet, AdminPaymentMethodViewSet, DashboardReportsView,
-    ExportSalesView, cancel_sale_view,
-    ChangePasswordView
+    BulkPriceUpdateView, MyTokenObtainPairView, PaymentMethodViewSet, 
+    AdminPaymentMethodViewSet, DashboardReportsView,
+    ExportSalesView, cancel_sale_view, ChangePasswordView, get_dolar_cotizaciones,
 )
 
 router = DefaultRouter()
@@ -34,6 +33,7 @@ urlpatterns = [
     path('reports/', ReportsView.as_view(), name='reports'),
     path('cash-count/', DailyCashCountView.as_view(), name='cash_count'),
     path('bulk-price-update/', BulkPriceUpdateView.as_view(), name='bulk_price_update'),
+    path('cotizaciones/', get_dolar_cotizaciones, name='get_dolar_cotizaciones'),
     
     # Esta línea incluye todas las URLs generadas por el router (como /products/, /users/, etc.)
     path('', include(router.urls)),
