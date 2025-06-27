@@ -2,28 +2,36 @@ import React, { useState, useContext } from 'react';
 import { PlusCircle, Edit, Trash2 } from 'lucide-react';
 import { ContextoAuth } from '../../context/AuthContext';
 import { Button, Modal, Table } from '../../components/ui/ComponentesUI';
-import { useFiltrosYBusqueda } from '../../hooks/useFiltrosYBusqueda';
+import { useServerSidePagination } from '../../hooks/useServerSidePagination';
 import { toast } from 'sonner';
 
 const API_URL = 'http://127.0.0.1:8000/api';
 
-// --- COMPONENTES Y LÓGICA DE FILTRADO ---
 const FiltroBusquedaMetodoPago = ({ setFiltros, filtros }) => {
-    const handleBusquedaChange = (e) => { setFiltros({ ...filtros, busqueda: e.target.value }); };
-    return ( <div className="mb-4"> <input type="text" value={filtros.busqueda} onChange={handleBusquedaChange} placeholder="Buscar por nombre..." className="p-2 border rounded-lg w-full md:w-1/3" /> </div> );
-};
-const logicaFiltroMetodosDePago = (metodos, filtros) => {
-    const { busqueda } = filtros;
-    if (!busqueda) return metodos;
-    const termino = busqueda.toLowerCase();
-    return metodos.filter(m => m.name.toLowerCase().includes(termino));
+    const handleBusquedaChange = (e) => { 
+        setFiltros({ ...filtros, search: e.target.value }); 
+    };
+    return ( 
+        <div className="mb-4">
+            <input 
+                type="text" 
+                value={filtros.search || ''} 
+                onChange={handleBusquedaChange} 
+                placeholder="Buscar por nombre..." 
+                className="p-2 border rounded-lg w-full md:w-1/3" 
+            />
+        </div>
+    );
 };
 
-// --- Formulario para Métodos de Pago (sin cambios) ---
 const FormularioMetodoPago = ({ metodo, onGuardar, onCancelar }) => {
     const [formData, setFormData] = useState(metodo);
-    const handleChange = (e) => { const { name, value, type, checked } = e.target; setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value })); };
+    const handleChange = (e) => { 
+        const { name, value, type, checked } = e.target; 
+        setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value })); 
+    };
     const handleFocus = (event) => event.target.select();
+    
     return (
         <form onSubmit={(e) => { e.preventDefault(); onGuardar(formData); }} className="space-y-4">
             <div>
@@ -49,23 +57,33 @@ const FormularioMetodoPago = ({ metodo, onGuardar, onCancelar }) => {
     );
 };
 
-
-// --- Página Principal de Gestión de Métodos de Pago ---
-const GestionMetodosDePago = ({ metodosDePago, obtenerDatos }) => {
+const GestionMetodosDePago = () => {
     const [modalAbierto, setModalAbierto] = useState(false);
     const [metodoEditando, setMetodoEditando] = useState(null);
     const { tokensAuth } = useContext(ContextoAuth);
 
-    const { datosPaginados, FiltrosUI, PaginacionUI } = useFiltrosYBusqueda({
-        items: metodosDePago,
-        itemsPorPagina: 10,
-        logicaDeFiltro: logicaFiltroMetodosDePago,
+    const { 
+        datosPaginados, 
+        loading, 
+        error, 
+        FiltrosUI, 
+        PaginacionUI,
+        refetch
+    } = useServerSidePagination({
+        endpoint: 'admin/payment-methods',
+        tokensAuth: tokensAuth,
         ComponenteFiltros: FiltroBusquedaMetodoPago,
-        filtrosIniciales: { busqueda: '' }
+        initialFilters: { search: '' }
     });
 
-    const abrirModalNuevo = () => { setMetodoEditando({ name: '', adjustment_percentage: '', is_active: true }); setModalAbierto(true); };
-    const abrirModalEditar = (metodo) => { setMetodoEditando(metodo); setModalAbierto(true); };
+    const abrirModalNuevo = () => { 
+        setMetodoEditando({ name: '', adjustment_percentage: '0.00', is_active: true }); 
+        setModalAbierto(true); 
+    };
+    const abrirModalEditar = (metodo) => { 
+        setMetodoEditando(metodo); 
+        setModalAbierto(true); 
+    };
 
     const guardarMetodo = async (datosMetodo) => {
         const esEditando = !!datosMetodo.id;
@@ -73,24 +91,26 @@ const GestionMetodosDePago = ({ metodosDePago, obtenerDatos }) => {
         const method = esEditando ? 'PUT' : 'POST';
         const payload = { ...datosMetodo, adjustment_percentage: datosMetodo.adjustment_percentage === '' ? '0.00' : datosMetodo.adjustment_percentage };
 
-        const promesaDeGuardado = fetch(url, { method, headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + String(tokensAuth.access) }, body: JSON.stringify(payload) })
-            .then(res => {
-                if (!res.ok) return res.json().then(err => Promise.reject(err));
-                return res;
-            });
+        const promesaDeGuardado = fetch(url, { 
+            method, 
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + String(tokensAuth.access) }, 
+            body: JSON.stringify(payload) 
+        }).then(res => {
+            if (!res.ok) return res.json().then(err => Promise.reject(err));
+            return res;
+        });
 
         toast.promise(promesaDeGuardado, {
             loading: 'Guardando método de pago...',
             success: () => {
                 setModalAbierto(false);
-                obtenerDatos();
+                refetch();
                 return `Método de pago ${esEditando ? 'actualizado' : 'creado'} con éxito.`;
             },
             error: (err) => `Error: ${JSON.stringify(err)}`
         });
     };
     
-    // --- INICIO DE CAMBIOS ---
     const borrarMetodo = (metodo) => {
         const ejecutarBorrado = () => {
             const promesa = fetch(`${API_URL}/admin/payment-methods/${metodo.id}/`, {
@@ -111,7 +131,7 @@ const GestionMetodosDePago = ({ metodosDePago, obtenerDatos }) => {
             toast.promise(promesa, {
                 loading: 'Procesando...',
                 success: (data) => {
-                    obtenerDatos();
+                    refetch();
                     return data.message;
                 },
                 error: (err) => `Error: ${err.detail || JSON.stringify(err)}`,
@@ -120,14 +140,10 @@ const GestionMetodosDePago = ({ metodosDePago, obtenerDatos }) => {
 
         toast("Confirmar Eliminación", {
             description: `¿Estás seguro de que quieres eliminar el método de pago "${metodo.name}"?`,
-            action: {
-                label: "Sí, eliminar",
-                onClick: ejecutarBorrado,
-            },
+            action: { label: "Sí, eliminar", onClick: ejecutarBorrado },
             cancel: { label: "No" },
         });
     };
-    // --- FIN DE CAMBIOS ---
     
     return (
         <div className="space-y-6">
@@ -138,43 +154,46 @@ const GestionMetodosDePago = ({ metodosDePago, obtenerDatos }) => {
 
             {FiltrosUI}
 
-            {datosPaginados.length > 0 ? (
-                <>
-                    <Table
-                        headers={[
-                            { title: 'Nombre' },
-                            { title: 'Ajuste (%)' },
-                            { title: 'Estado' },
-                            { title: 'Acciones' }
-                        ]}
-                        data={datosPaginados}
-                        renderRow={(pm) => (
-                            <tr key={pm.id} className={`border-b hover:bg-gray-50 ${!pm.is_active ? 'bg-gray-100 text-gray-500' : 'bg-white'}`}>
-                                <td className="px-6 py-4 font-medium">{pm.name}</td>
-                                <td className={`px-6 py-4 font-semibold ${pm.adjustment_percentage < 0 ? 'text-green-600' : pm.adjustment_percentage > 0 ? 'text-red-600' : ''}`}>
-                                    {pm.adjustment_percentage}%
-                                </td>
-                                <td className="px-6 py-4">
-                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${pm.is_active ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                                        {pm.is_active ? 'Activo' : 'Inactivo'}
-                                    </span>
-                                </td>
-                                <td className="px-6 py-4 flex gap-2">
-                                    <Button onClick={() => abrirModalEditar(pm)} variant="secondary" size="sm" icon={Edit} />
-                                    {/* --- INICIO DE CAMBIOS --- */}
-                                    <Button onClick={() => borrarMetodo(pm)} variant="danger" size="sm" icon={Trash2} />
-                                    {/* --- FIN DE CAMBIOS --- */}
-                                </td>
-                            </tr>
-                        )}
-                    />
-                    {PaginacionUI}
-                </>
-            ) : (
-                <div className="text-center py-16 px-6 bg-white rounded-lg shadow">
-                    <h3 className="text-lg font-semibold text-gray-700">No se encontraron métodos de pago</h3>
-                    <p className="text-gray-500 mt-1">Intenta ajustar los términos de tu búsqueda o crea uno nuevo.</p>
-                </div>
+            {loading && <p>Cargando métodos de pago...</p>}
+            {error && <p className="text-red-500">Error: {error}</p>}
+
+            {!loading && !error && (
+                datosPaginados.length > 0 ? (
+                    <>
+                        <Table
+                            headers={[
+                                { title: 'Nombre' },
+                                { title: 'Ajuste (%)' },
+                                { title: 'Estado' },
+                                { title: 'Acciones' }
+                            ]}
+                            data={datosPaginados}
+                            renderRow={(pm) => (
+                                <tr key={pm.id} className={`border-b hover:bg-gray-50 ${!pm.is_active ? 'bg-gray-100 text-gray-500' : 'bg-white'}`}>
+                                    <td className="px-6 py-4 font-medium">{pm.name}</td>
+                                    <td className={`px-6 py-4 font-semibold ${pm.adjustment_percentage < 0 ? 'text-green-600' : pm.adjustment_percentage > 0 ? 'text-red-600' : ''}`}>
+                                        {pm.adjustment_percentage}%
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${pm.is_active ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                            {pm.is_active ? 'Activo' : 'Inactivo'}
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4 flex gap-2">
+                                        <Button onClick={() => abrirModalEditar(pm)} variant="secondary" className="p-2 h-9 w-9"><Edit size={16} /></Button>
+                                        <Button onClick={() => borrarMetodo(pm)} variant="danger" className="p-2 h-9 w-9"><Trash2 size={16} /></Button>
+                                    </td>
+                                </tr>
+                            )}
+                        />
+                        {PaginacionUI}
+                    </>
+                ) : (
+                    <div className="text-center py-16 px-6 bg-white rounded-lg shadow">
+                        <h3 className="text-lg font-semibold text-gray-700">No se encontraron métodos de pago</h3>
+                        <p className="text-gray-500 mt-1">Intenta ajustar los términos de tu búsqueda o crea uno nuevo.</p>
+                    </div>
+                )
             )}
 
             <Modal isOpen={modalAbierto} onClose={() => setModalAbierto(false)} title={metodoEditando?.id ? 'Editar Método de Pago' : 'Nuevo Método de Pago'}>

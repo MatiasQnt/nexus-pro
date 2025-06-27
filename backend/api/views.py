@@ -4,6 +4,7 @@ import csv
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from django.db import transaction
+from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Count, Sum, F, ProtectedError
 from django.db.models.functions import TruncHour ,TruncDay, TruncMonth, TruncWeek, ExtractHour
 from django.contrib.auth.models import User, Group
@@ -12,7 +13,7 @@ from django.utils import timezone
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill
 from openpyxl.utils import get_column_letter
-from rest_framework import viewsets, status, serializers
+from rest_framework import viewsets, status, serializers, filters
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -36,28 +37,17 @@ from .permissions import (
 logger = logging.getLogger(__name__)
 
 def get_dolar_cotizaciones(request):
-    """
-    Esta vista obtiene las cotizaciones del dólar desde APIs externas,
-    las consolida y las devuelve como un solo JSON.
-    """
     try:
-        # Hacemos las dos peticiones en paralelo para más eficiencia
-        # (Aunque en Python se ejecutan secuencialmente, el concepto es tenerlas juntas)
-        
-        # Petición a Bluelytics para Oficial y Blue
         bluelytics_res = requests.get('https://api.bluelytics.com.ar/v2/latest')
-        bluelytics_res.raise_for_status()  # Esto lanzará un error si la petición falla (ej: 404, 500)
+        bluelytics_res.raise_for_status()
         bluelytics_data = bluelytics_res.json()
 
-        # Petición a DolarAPI para MEP
         dolarapi_res = requests.get('https://dolarapi.com/v1/dolares')
         dolarapi_res.raise_for_status()
         dolarapi_data = dolarapi_res.json()
 
-        # Buscamos el Dólar MEP (Bolsa) en la respuesta
         dolar_mep_raw = next((d for d in dolarapi_data if d.get("casa") == "bolsa"), None)
 
-        # Consolidamos toda la información en un solo diccionario
         consolidated_data = {
             'blue': bluelytics_data.get('blue'),
             'oficial': bluelytics_data.get('oficial'),
@@ -69,11 +59,9 @@ def get_dolar_cotizaciones(request):
         }
 
         return JsonResponse(consolidated_data)
-
     except requests.exceptions.RequestException as e:
-        # Si alguna de las APIs externas falla, devolvemos un error
         logger.error(f"Error al contactar APIs de cotizaciones: {e}")
-        return JsonResponse({'error': 'No se pudieron obtener las cotizaciones externas'}, status=503) # 503: Service Unavailable
+        return JsonResponse({'error': 'No se pudieron obtener las cotizaciones externas'}, status=503)
     except Exception as e:
         logger.error(f"Error inesperado en la vista de cotizaciones: {e}")
         return JsonResponse({'error': 'Ocurrió un error interno en el servidor'}, status=500)
@@ -86,27 +74,26 @@ class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.all().order_by('name')
     serializer_class = ProductSerializer
 
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        estado = self.request.query_params.get('estado')
-        if estado:
-            queryset = queryset.filter(estado=estado)
-        return queryset
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['category', 'provider', 'estado'] 
+    search_fields = ['name', 'sku', 'description']
+    ordering_fields = ['name', 'stock', 'sale_price', 'cost_price']
 
     def get_permissions(self):
-        if self.action in ['list', 'retrieve', 'update_stock', 'popular_for_pos']:
-            self.permission_classes = [IsAuthenticated, CanViewPanel]
-        elif self.action in ['create', 'update', 'partial_update', 'destroy']:
+        admin_actions = ['list', 'retrieve', 'create', 'update', 'partial_update', 'destroy', 'update_stock']
+        
+        if self.action in admin_actions:
             self.permission_classes = [IsAuthenticated, IsSuperAdminOrAdmin]
+        elif self.action in ['popular_for_pos', 'all_active_for_pos']:
+            self.permission_classes = [IsAuthenticated, CanCreateSales]
         else:
             self.permission_classes = [IsAuthenticated]
+            
         return super().get_permissions()
 
     def destroy(self, request, *args, **kwargs):
         product = self.get_object()
-        # Verificamos si el producto ha sido usado en alguna venta
         if SaleDetail.objects.filter(product=product).exists():
-            # Si ha sido usado, lo desactivamos en lugar de borrarlo
             product.estado = 'inactivo'
             product.save()
             return Response(
@@ -114,37 +101,36 @@ class ProductViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_200_OK
             )
         else:
-            # Si no ha sido usado, lo eliminamos permanentemente
             product.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=False, methods=['get'], url_path='popular-for-pos')
     def popular_for_pos(self, request):
-        """
-        Devuelve los 10 productos activos más vendidos en los últimos 90 días.
-        """
         ninety_days_ago = timezone.now() - timedelta(days=90)
         
-        # Obtenemos los IDs de los productos más vendidos y su cantidad
         sold_products_ranking = SaleDetail.objects.filter(
             sale__status='Completada',
             sale__date_time__gte=ninety_days_ago,
-            product__estado='activo' # Solo productos activos
+            product__estado='activo'
         ).values('product_id').annotate(
             total_sold=Sum('quantity')
         ).order_by('-total_sold')[:10]
 
-        # Mapeamos los IDs a los objetos de producto
         product_ids_ordered = [item['product_id'] for item in sold_products_ranking]
         
-        # Obtenemos los productos manteniendo el orden de popularidad
         products_queryset = Product.objects.filter(id__in=product_ids_ordered)
         products_dict = {product.id: product for product in products_queryset}
         sorted_products = [products_dict[pid] for pid in product_ids_ordered if pid in products_dict]
         
         serializer = self.get_serializer(sorted_products, many=True)
         return Response(serializer.data)
-    # --- FIN DE CAMBIOS ---
+    
+    @action(detail=False, methods=['get'], url_path='all-active-for-pos')
+    def all_active_for_pos(self, request):
+        self.pagination_class = None 
+        active_products = Product.objects.filter(estado='activo').order_by('name')
+        serializer = self.get_serializer(active_products, many=True)
+        return Response(serializer.data)
     
     @action(detail=True, methods=['patch'], url_path='update-stock')
     def update_stock(self, request, pk=None):
@@ -164,11 +150,20 @@ class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all().order_by('name')
     serializer_class = CategorySerializer
 
+    # --- LÍNEAS AÑADIDAS ---
+    # Habilitamos los mismos backends de filtrado que en Productos
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    
+    # Le decimos que el campo 'search' debe buscar en el campo 'name' del modelo
+    search_fields = ['name']
+    
+    # Opcional: Permitimos ordenar por nombre
+    ordering_fields = ['name']
+    # --- FIN DE LÍNEAS AÑADIDAS ---
+
     def destroy(self, request, *args, **kwargs):
         category = self.get_object()
-        # Verificamos si la categoría está siendo usada por algún producto
         if Product.objects.filter(category=category).exists():
-            # Si está en uso, la desactivamos
             category.is_active = False
             category.save()
             return Response(
@@ -176,7 +171,6 @@ class CategoryViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_200_OK
             )
         else:
-            # Si no está en uso, la eliminamos permanentemente
             category.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -185,19 +179,20 @@ class ProviderViewSet(viewsets.ModelViewSet):
     queryset = Provider.objects.all().order_by('name')
     serializer_class = ProviderSerializer
 
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['name', 'contact_person', 'phone_number', 'email']
+    ordering_fields = ['name']
+
     def destroy(self, request, *args, **kwargs):
         provider = self.get_object()
-        # Verificamos si el proveedor está siendo usado por algún producto
         if Product.objects.filter(provider=provider).exists():
-            # Si está en uso, lo desactivamos
             provider.is_active = False
             provider.save()
             return Response(
-                {"detail": "Este proveedor está en uso por uno o más productos. Ha sido desactivado."},
+                {"detail": "Este proveedor está en uso y no se puede eliminar. Ha sido desactivado."},
                 status=status.HTTP_200_OK
             )
         else:
-            # Si no está en uso, lo eliminamos permanentemente
             provider.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -208,9 +203,7 @@ class ClientViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         client = self.get_object()
-        # Verificamos si el cliente tiene ventas asociadas
         if Sale.objects.filter(client=client).exists():
-            # Si tiene ventas, lo desactivamos
             client.is_active = False
             client.save()
             return Response(
@@ -218,7 +211,6 @@ class ClientViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_200_OK
             )
         else:
-            # Si no, lo eliminamos permanentemente
             client.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -233,10 +225,8 @@ class UserViewSet(viewsets.ModelViewSet):
         password = request.data.get('password')
         if not password:
             return Response({'error': 'La contraseña no puede estar vacía.'}, status=status.HTTP_400_BAD_REQUEST)
-
         user.set_password(password)
         user.save()
-
         return Response({'status': 'Contraseña actualizada con éxito'}, status=status.HTTP_200_OK)
 
 class GroupViewSet(viewsets.ModelViewSet):
@@ -267,12 +257,9 @@ class SaleViewSet(viewsets.ModelViewSet):
                 payment_method = PaymentMethod.objects.get(id=payment_method_id)
                 sale = serializer.save(user=request.user, payment_method=payment_method)
                 for detail in details_data:
-                    # --- INICIO DE CAMBIOS ---
-                    # CAMBIO: Verificamos que el producto esté activo antes de vender
                     product = Product.objects.get(id=detail['product_id'])
                     if product.estado != 'activo':
                         raise serializers.ValidationError(f"El producto '{product.name}' no está activo y no se puede vender.")
-                    # --- FIN DE CAMBIOS ---
                     if product.stock < detail['quantity']:
                         raise serializers.ValidationError(f"No hay stock para {product.name}")
                     product.stock -= detail['quantity']
@@ -320,7 +307,7 @@ def cancel_sale_view(request, pk):
 
 class PaymentMethodViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated, CanViewPanel]
-    queryset = PaymentMethod.objects.filter(is_active=True)
+    queryset = PaymentMethod.objects.filter(is_active=True).order_by('name')
     serializer_class = PaymentMethodSerializer
 
 class AdminPaymentMethodViewSet(viewsets.ModelViewSet):
@@ -330,9 +317,7 @@ class AdminPaymentMethodViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         method = self.get_object()
-        # Verificamos si el método de pago ha sido usado en alguna venta
         if Sale.objects.filter(payment_method=method).exists():
-            # Si está en uso, lo desactivamos
             method.is_active = False
             method.save()
             return Response(
@@ -340,7 +325,6 @@ class AdminPaymentMethodViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_200_OK
             )
         else:
-            # Si no está en uso, lo eliminamos permanentemente
             method.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -424,10 +408,7 @@ class DashboardReportsView(APIView):
 
         return Response({
             'kpis': kpis,
-            # --- INICIO DEL CAMBIO ---
-            # Agregamos la lista de productos con bajo stock a la respuesta
             'low_stock_products': list(low_stock_products_query),
-            # --- FIN DEL CAMBIO ---
             'charts': chart_data,
             'rankings': rankings_data,
             'other_reports': other_reports
@@ -605,13 +586,10 @@ class ChangePasswordView(APIView):
 
         if not all([old_password, new_password, confirm_password]):
             return Response({'error': 'Todos los campos son requeridos.'}, status=status.HTTP_400_BAD_REQUEST)
-
         if not user.check_password(old_password):
             return Response({'error': 'La contraseña actual es incorrecta.'}, status=status.HTTP_400_BAD_REQUEST)
-
         if new_password != confirm_password:
             return Response({'error': 'Las contraseñas nuevas no coinciden.'}, status=status.HTTP_400_BAD_REQUEST)
-
         if len(new_password) < 8:
             return Response({'error': 'La nueva contraseña debe tener al menos 8 caracteres.'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -619,3 +597,14 @@ class ChangePasswordView(APIView):
         user.save()
 
         return Response({'status': 'Contraseña cambiada con éxito.'}, status=status.HTTP_200_OK)
+
+class CashCountHistoryViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = CashCount.objects.all().order_by('-date')
+    serializer_class = CashCountSerializer
+    permission_classes = [IsAuthenticated, IsSuperAdminOrAdmin]
+    
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = {
+        'date': ['gte', 'lte'],
+    }
+    ordering_fields = ['date', 'difference']

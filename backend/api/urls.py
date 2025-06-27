@@ -7,6 +7,7 @@ from .views import (
     BulkPriceUpdateView, MyTokenObtainPairView, PaymentMethodViewSet, 
     AdminPaymentMethodViewSet, DashboardReportsView,
     ExportSalesView, cancel_sale_view, ChangePasswordView, get_dolar_cotizaciones,
+    CashCountHistoryViewSet,
 )
 
 router = DefaultRouter()
@@ -17,6 +18,7 @@ router.register(r'clients', ClientViewSet, basename='client')
 router.register(r'sales', SaleViewSet, basename='sale')
 router.register(r'users', UserViewSet, basename='user')
 router.register(r'groups', GroupViewSet, basename='group')
+router.register(r'cash-count-history', CashCountHistoryViewSet, basename='cashcounthistory')
 router.register(r'payment-methods', PaymentMethodViewSet, basename='paymentmethod')
 router.register(r'admin/payment-methods', AdminPaymentMethodViewSet, basename='admin-payment-methods')
 

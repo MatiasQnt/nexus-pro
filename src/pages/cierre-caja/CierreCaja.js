@@ -2,87 +2,84 @@ import React, { useState, useEffect, useContext, useCallback } from 'react';
 import { Archive } from 'lucide-react';
 import { ContextoAuth } from '../../context/AuthContext';
 import { Button, Card, Table } from '../../components/ui/ComponentesUI';
-import { useFiltrosYBusqueda } from '../../hooks/useFiltrosYBusqueda';
+import { useServerSidePagination } from '../../hooks/useServerSidePagination';
 import { toast } from 'sonner';
 
 const API_URL = 'http://127.0.0.1:8000/api';
 
-// --- COMPONENTES Y LÓGICA DE FILTRADO ---
 const FiltrosHistorial = ({ setFiltros, filtros, resetFiltros }) => {
     const handleDateChange = (e) => {
-        setFiltros(prev => ({ ...prev, [e.target.name]: e.target.value }));
+        // El backend espera los filtros como 'date__gte' (mayor o igual que) y 'date__lte' (menor o igual que).
+        const filterName = e.target.name === 'fechaDesde' ? 'date__gte' : 'date__lte';
+        setFiltros(prev => ({ ...prev, [filterName]: e.target.value }));
     };
+
     return (
         <div className="flex flex-wrap items-end gap-4 mb-4 p-4 bg-gray-50 rounded-lg">
             <div className="flex-grow">
                 <label htmlFor="fechaDesde" className="block text-sm font-medium text-gray-700">Desde</label>
-                <input id="fechaDesde" type="date" name="fechaDesde" value={filtros.fechaDesde} onChange={handleDateChange} className="mt-1 p-2 border rounded-lg w-full" />
+                <input id="fechaDesde" type="date" name="fechaDesde" value={filtros.date__gte || ''} onChange={handleDateChange} className="mt-1 p-2 border rounded-lg w-full" />
             </div>
             <div className="flex-grow">
                 <label htmlFor="fechaHasta" className="block text-sm font-medium text-gray-700">Hasta</label>
-                <input id="fechaHasta" type="date" name="fechaHasta" value={filtros.fechaHasta} onChange={handleDateChange} className="mt-1 p-2 border rounded-lg w-full" />
+                <input id="fechaHasta" type="date" name="fechaHasta" value={filtros.date__lte || ''} onChange={handleDateChange} className="mt-1 p-2 border rounded-lg w-full" />
             </div>
             <Button onClick={resetFiltros} variant="secondary">Limpiar</Button>
         </div>
     );
 };
-const logicaFiltroHistorial = (historial, filtros) => {
-    const { fechaDesde, fechaHasta } = filtros;
-    if (!fechaDesde && !fechaHasta) return historial;
-    return historial.filter(cierre => {
-        const fechaCierre = new Date(cierre.date);
-        fechaCierre.setMinutes(fechaCierre.getMinutes() + fechaCierre.getTimezoneOffset());
-        const desde = fechaDesde ? new Date(fechaDesde) : null;
-        const hasta = fechaHasta ? new Date(fechaHasta) : null;
-        if (desde && fechaCierre < desde) return false;
-        if (hasta && fechaCierre > hasta) return false;
-        return true;
-    });
-};
 
-// --- COMPONENTE PRINCIPAL ---
 const CierreCaja = () => {
-    const [datos, setDatos] = useState(null);
-    const [cargando, setCargando] = useState(true);
+    // Estado para la sección "Cierre del Día"
+    const [todayData, setTodayData] = useState(null);
+    const [loadingToday, setLoadingToday] = useState(true);
+    const [errorToday, setErrorToday] = useState('');
     const [montoContado, setMontoContado] = useState('');
-    const [error, setError] = useState('');
+    
     const { tokensAuth } = useContext(ContextoAuth);
 
-    const { datosPaginados, FiltrosUI, PaginacionUI } = useFiltrosYBusqueda({
-        items: datos?.history || [],
-        itemsPorPagina: 10,
-        logicaDeFiltro: logicaFiltroHistorial,
+    // Hook para la sección "Historial de Cierres"
+    const { 
+        datosPaginados, 
+        loading: loadingHistory, 
+        error: errorHistory, 
+        FiltrosUI, 
+        PaginacionUI,
+        refetch: refetchHistory
+    } = useServerSidePagination({
+        // Asumimos un nuevo endpoint solo para el historial, que debe ser creado en el backend.
+        endpoint: 'cash-count-history',
+        tokensAuth: tokensAuth,
         ComponenteFiltros: FiltrosHistorial,
-        filtrosIniciales: { fechaDesde: '', fechaHasta: '' }
+        initialFilters: { date__gte: '', date__lte: '' }
     });
 
-    const obtenerDatos = useCallback(async () => {
+    const obtenerDatosDelDia = useCallback(async () => {
         if (!tokensAuth) return;
-        setCargando(true);
-        setError('');
+        setLoadingToday(true);
+        setErrorToday('');
         try {
             const response = await fetch(`${API_URL}/cash-count/`, { headers: { 'Authorization': 'Bearer ' + String(tokensAuth.access) } });
             const responseData = await response.json();
             if (!response.ok) {
-                   if (response.status === 409) {
-                        setError(responseData.message);
-                        setDatos({ history: responseData.history || [] }); 
-                   } else {
-                        throw new Error(responseData.detail || 'No se pudieron cargar los datos.');
-                   }
+                if (response.status === 409) {
+                    setErrorToday(responseData.message);
+                } else {
+                    throw new Error(responseData.detail || 'No se pudieron cargar los datos del día.');
+                }
             } else {
-                   setDatos(responseData);
+                setTodayData(responseData);
             }
         } catch (error) {
-            setError(error.message);
+            setErrorToday(error.message);
         } finally {
-            setCargando(false);
+            setLoadingToday(false);
         }
     }, [tokensAuth]);
 
     useEffect(() => {
-        obtenerDatos();
-    }, [obtenerDatos]);
+        obtenerDatosDelDia();
+    }, [obtenerDatosDelDia]);
 
     const guardarCierre = async () => {
         if(montoContado === '' || isNaN(parseFloat(montoContado))) {
@@ -95,7 +92,7 @@ const CierreCaja = () => {
             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + String(tokensAuth.access) },
             body: JSON.stringify({
                 counted_amount: parseFloat(montoContado),
-                expected_amount: datos.expected_amount
+                expected_amount: todayData.expected_amount
             })
         }).then(res => {
             if (!res.ok) return res.json().then(err => Promise.reject(err));
@@ -106,16 +103,17 @@ const CierreCaja = () => {
             loading: 'Guardando cierre de caja...',
             success: (data) => {
                 setMontoContado('');
-                obtenerDatos();
+                obtenerDatosDelDia(); // Recargamos los datos del día
+                refetchHistory();     // Recargamos el historial
                 return data.message || '¡Cierre de caja guardado con éxito!';
             },
             error: (err) => `Error: ${err.message || 'No se pudo guardar el cierre.'}`
         });
     };
     
-    const diferencia = datos?.expected_amount != null && montoContado !== '' ? parseFloat(montoContado) - datos.expected_amount : null;
+    const diferencia = todayData?.expected_amount != null && montoContado !== '' ? parseFloat(montoContado) - todayData.expected_amount : null;
 
-    if (cargando) return <div className="p-6 text-center">Cargando...</div>;
+    if (loadingToday) return <div className="p-6 text-center">Cargando...</div>;
     
     return (
         <div className="space-y-8 p-6">
@@ -123,15 +121,15 @@ const CierreCaja = () => {
             
             <Card>
                 <h2 className="text-xl font-bold text-gray-700 mb-4">Cierre del Día ({new Date().toLocaleDateString('es-AR')})</h2>
-                {error && !datos?.expected_amount ? (
+                {errorToday && !todayData?.expected_amount ? (
                     <div className="text-center p-8 bg-yellow-50 rounded-lg">
-                        <p className="text-lg font-semibold text-yellow-700">{error}</p>
+                        <p className="text-lg font-semibold text-yellow-700">{errorToday}</p>
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
                         <div className="text-center p-4 bg-blue-50 rounded-lg">
                             <h3 className="text-sm font-semibold text-blue-800 uppercase">Monto Esperado (Sistema)</h3>
-                            <p className="text-4xl font-bold text-blue-900">${parseFloat(datos?.expected_amount || 0).toFixed(2)}</p>
+                            <p className="text-4xl font-bold text-blue-900">${parseFloat(todayData?.expected_amount || 0).toFixed(2)}</p>
                         </div>
                         <div className="p-4">
                              <label className="block text-sm font-medium text-gray-700 mb-1">Monto Contado en Caja</label>
@@ -148,7 +146,7 @@ const CierreCaja = () => {
                             <p className={`text-4xl font-bold ${diferencia === null ? 'text-gray-900' : diferencia === 0 ? 'text-green-900' : 'text-red-900'}`}>{diferencia !== null ? `$${diferencia.toFixed(2)}` : '-'}</p>
                         </div>
                         <div className="md:col-span-3 text-center">
-                            <Button onClick={guardarCierre} disabled={diferencia === null || !!error} variant="primary" icon={Archive}>Guardar Cierre de Caja</Button>
+                            <Button onClick={guardarCierre} disabled={diferencia === null || !!errorToday} variant="primary" icon={Archive}>Guardar Cierre de Caja</Button>
                         </div>
                     </div>
                 )}
@@ -158,36 +156,41 @@ const CierreCaja = () => {
                  <h2 className="text-xl font-bold text-gray-700 mb-4">Historial de Cierres</h2>
                  {FiltrosUI}
                  
-                 {datosPaginados.length > 0 ? (
-                     <>
-                         <Table
-                             headers={[
-                                 { title: 'Fecha' },
-                                 { title: 'Monto Esperado' },
-                                 { title: 'Monto Contado' },
-                                 { title: 'Diferencia' },
-                                 { title: 'Usuario' }
-                             ]}
-                             data={datosPaginados}
-                             renderRow={(c) => (
-                                 <tr key={c.id} className="bg-white border-b hover:bg-gray-50">
-                                     <td className="px-6 py-4">{new Date(c.date + 'T00:00:00').toLocaleDateString('es-AR')}</td>
-                                     <td className="px-6 py-4">${parseFloat(c.expected_amount).toFixed(2)}</td>
-                                     <td className="px-6 py-4">${parseFloat(c.counted_amount).toFixed(2)}</td>
-                                     <td className={`px-6 py-4 font-bold ${c.difference > 0 ? 'text-green-600' : c.difference < 0 ? 'text-red-600' : 'text-gray-800'}`}>
-                                         {c.difference > 0 ? `+${parseFloat(c.difference).toFixed(2)}` : parseFloat(c.difference).toFixed(2)}
-                                     </td>
-                                     <td className="px-6 py-4">{c.user}</td>
-                                 </tr>
-                             )}
-                         />
-                         {PaginacionUI}
-                     </>
-                 ) : (
-                     <div className="text-center py-16 px-6 bg-white rounded-lg shadow">
-                         <h3 className="text-lg font-semibold text-gray-700">No se encontraron cierres de caja</h3>
-                         <p className="text-gray-500 mt-1">Intenta ajustar el rango de fechas para encontrar resultados.</p>
-                     </div>
+                 {loadingHistory && <p>Cargando historial...</p>}
+                 {errorHistory && <p className="text-red-500">{errorHistory}</p>}
+
+                 {!loadingHistory && !errorHistory && (
+                     datosPaginados.length > 0 ? (
+                         <>
+                             <Table
+                                 headers={[
+                                     { title: 'Fecha' },
+                                     { title: 'Monto Esperado' },
+                                     { title: 'Monto Contado' },
+                                     { title: 'Diferencia' },
+                                     { title: 'Usuario' }
+                                 ]}
+                                 data={datosPaginados}
+                                 renderRow={(c) => (
+                                     <tr key={c.id} className="bg-white border-b hover:bg-gray-50">
+                                         <td className="px-6 py-4">{new Date(c.date + 'T00:00:00').toLocaleDateString('es-AR')}</td>
+                                         <td className="px-6 py-4">${parseFloat(c.expected_amount).toFixed(2)}</td>
+                                         <td className="px-6 py-4">${parseFloat(c.counted_amount).toFixed(2)}</td>
+                                         <td className={`px-6 py-4 font-bold ${c.difference > 0 ? 'text-green-600' : c.difference < 0 ? 'text-red-600' : 'text-gray-800'}`}>
+                                             {c.difference > 0 ? `+${parseFloat(c.difference).toFixed(2)}` : parseFloat(c.difference).toFixed(2)}
+                                         </td>
+                                         <td className="px-6 py-4">{c.user_name || c.user}</td>
+                                     </tr>
+                                 )}
+                             />
+                             {PaginacionUI}
+                         </>
+                     ) : (
+                         <div className="text-center py-16 px-6 bg-white rounded-lg shadow">
+                             <h3 className="text-lg font-semibold text-gray-700">No se encontraron cierres de caja</h3>
+                             <p className="text-gray-500 mt-1">Intenta ajustar el rango de fechas para encontrar resultados.</p>
+                         </div>
+                     )
                  )}
             </div>
         </div>

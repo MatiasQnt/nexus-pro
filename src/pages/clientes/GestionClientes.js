@@ -2,31 +2,33 @@ import React, { useState, useContext } from 'react';
 import { PlusCircle, Edit, Trash2 } from 'lucide-react';
 import { ContextoAuth } from '../../context/AuthContext';
 import { Button, Modal, Table } from '../../components/ui/ComponentesUI';
-import { useFiltrosYBusqueda } from '../../hooks/useFiltrosYBusqueda';
+import { useServerSidePagination } from '../../hooks/useServerSidePagination';
 import { toast } from 'sonner';
 
 const API_URL = 'http://127.0.0.1:8000/api';
 
-// --- COMPONENTES Y LÓGICA DE FILTRADO ---
+// --- Componente de Filtro ---
 const FiltroBusquedaCliente = ({ setFiltros, filtros }) => {
-    const handleBusquedaChange = (e) => { setFiltros({ ...filtros, busqueda: e.target.value }); };
+    const handleBusquedaChange = (e) => {
+        setFiltros({ ...filtros, search: e.target.value });
+    };
     return (
         <div className="mb-4">
-            <input type="text" value={filtros.busqueda} onChange={handleBusquedaChange} placeholder="Buscar por Nombre, Teléfono o Email..." className="p-2 border rounded-lg w-full md:w-1/3" />
+            <input 
+                type="text" 
+                value={filtros.search || ''} 
+                onChange={handleBusquedaChange} 
+                placeholder="Buscar por Nombre, Teléfono o Email..." 
+                className="p-2 border rounded-lg w-full md:w-1/3" 
+            />
         </div>
     );
 };
 
-const logicaFiltroClientes = (clientes, filtros) => {
-    const { busqueda } = filtros;
-    if (!busqueda) return clientes;
-    const termino = busqueda.toLowerCase();
-    return clientes.filter(c => c.name.toLowerCase().includes(termino) || (c.phone_number && c.phone_number.toLowerCase().includes(termino)) || (c.email && c.email.toLowerCase().includes(termino)) );
-};
-
-// --- Formulario para Clientes ---
+// --- Formulario para Clientes (sin cambios) ---
 const FormularioCliente = ({ cliente, onGuardar, onCancelar }) => {
     const [formData, setFormData] = useState({ ...cliente, is_active: cliente.is_active !== undefined ? cliente.is_active : true });
+    
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
         setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
@@ -64,18 +66,24 @@ const FormularioCliente = ({ cliente, onGuardar, onCancelar }) => {
     );
 };
 
-// --- COMPONENTE PRINCIPAL ---
-const GestionClientes = ({ clientes, obtenerDatos }) => {
+// --- Componente Principal ---
+const GestionClientes = () => {
     const [modalAbierto, setModalAbierto] = useState(false);
     const [clienteEditando, setClienteEditando] = useState(null);
     const { tokensAuth } = useContext(ContextoAuth);
 
-    const { datosPaginados, FiltrosUI, PaginacionUI } = useFiltrosYBusqueda({
-        items: clientes,
-        itemsPorPagina: 10,
-        logicaDeFiltro: logicaFiltroClientes,
+    const { 
+        datosPaginados, 
+        loading, 
+        error, 
+        FiltrosUI, 
+        PaginacionUI,
+        refetch
+    } = useServerSidePagination({
+        endpoint: 'clients',
+        tokensAuth: tokensAuth,
         ComponenteFiltros: FiltroBusquedaCliente,
-        filtrosIniciales: { busqueda: '' }
+        initialFilters: { search: '' }
     });
 
     const abrirModalNuevo = () => {
@@ -108,7 +116,7 @@ const GestionClientes = ({ clientes, obtenerDatos }) => {
                 loading: 'Guardando cliente...',
                 success: () => {
                     setModalAbierto(false);
-                    obtenerDatos();
+                    refetch();
                     return `Cliente ${esEditando ? 'actualizado' : 'creado'} con éxito.`;
                 },
                 error: (err) => `Error al guardar: ${JSON.stringify(err)}`
@@ -116,7 +124,6 @@ const GestionClientes = ({ clientes, obtenerDatos }) => {
         );
     };
 
-    // --- INICIO DE CAMBIOS ---
     const borrarCliente = (cliente) => {
         const ejecutarBorrado = () => {
             const promesa = fetch(`${API_URL}/clients/${cliente.id}/`, {
@@ -137,7 +144,7 @@ const GestionClientes = ({ clientes, obtenerDatos }) => {
             toast.promise(promesa, {
                 loading: 'Procesando...',
                 success: (data) => {
-                    obtenerDatos();
+                    refetch();
                     return data.message;
                 },
                 error: (err) => `Error: ${err.detail || JSON.stringify(err)}`,
@@ -146,14 +153,10 @@ const GestionClientes = ({ clientes, obtenerDatos }) => {
 
         toast("Confirmar Eliminación", {
             description: `¿Estás seguro de que quieres eliminar al cliente "${cliente.name}"?`,
-            action: {
-                label: "Sí, eliminar",
-                onClick: ejecutarBorrado,
-            },
+            action: { label: "Sí, eliminar", onClick: ejecutarBorrado },
             cancel: { label: "No" },
         });
     };
-    // --- FIN DE CAMBIOS ---
 
     return (
         <div className="space-y-6">
@@ -163,46 +166,45 @@ const GestionClientes = ({ clientes, obtenerDatos }) => {
             </div>
             
             {FiltrosUI}
+
+            {loading && <p>Cargando clientes...</p>}
+            {error && <p className="text-red-500">Error: {error}</p>}
             
-            {datosPaginados.length > 0 ? (
-                <>
-                    <Table
-                        headers={[
-                            { title: 'Nombre' },
-                            { title: 'Teléfono' },
-                            { title: 'Email' },
-                            { title: 'Cumpleaños' },
-                            { title: 'Estado' },
-                            { title: 'Acciones' }
-                        ]}
-                        data={datosPaginados}
-                        renderRow={(cliente) => (
-                            <tr key={cliente.id} className={`border-b hover:bg-gray-50 ${!cliente.is_active ? 'bg-gray-100 text-gray-500' : 'bg-white'}`}>
-                                <td className="px-6 py-4">{cliente.name}</td>
-                                <td className="px-6 py-4">{cliente.phone_number || '-'}</td>
-                                <td className="px-6 py-4">{cliente.email || '-'}</td>
-                                <td className="px-6 py-4">{cliente.birthday ? new Date(cliente.birthday + 'T00:00:00').toLocaleDateString('es-AR') : '-'}</td>
-                                <td className="px-6 py-4">
-                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${cliente.is_active ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                                        {cliente.is_active ? 'Activo' : 'Inactivo'}
-                                    </span>
-                                </td>
-                                <td className="px-6 py-4 flex gap-2">
-                                    <Button onClick={() => abrirModalEditar(cliente)} variant="secondary" size="sm" icon={Edit} />
-                                    {/* --- INICIO DE CAMBIOS --- */}
-                                    <Button onClick={() => borrarCliente(cliente)} variant="danger" size="sm" icon={Trash2} />
-                                    {/* --- FIN DE CAMBIOS --- */}
-                                </td>
-                            </tr>
-                        )}
-                    />
-                    {PaginacionUI}
-                </>
-            ) : (
-                <div className="text-center py-16 px-6 bg-white rounded-lg shadow">
-                    <h3 className="text-lg font-semibold text-gray-700">No se encontraron clientes</h3>
-                    <p className="text-gray-500 mt-1">Intenta ajustar los términos de tu búsqueda o crea un nuevo cliente.</p>
-                </div>
+            {!loading && !error && (
+                datosPaginados.length > 0 ? (
+                    <>
+                        <Table
+                            headers={[
+                                { title: 'Nombre' }, { title: 'Teléfono' }, { title: 'Email' },
+                                { title: 'Cumpleaños' }, { title: 'Estado' }, { title: 'Acciones' }
+                            ]}
+                            data={datosPaginados}
+                            renderRow={(cliente) => (
+                                <tr key={cliente.id} className={`border-b hover:bg-gray-50 ${!cliente.is_active ? 'bg-gray-100 text-gray-500' : 'bg-white'}`}>
+                                    <td className="px-6 py-4 font-medium">{cliente.name}</td>
+                                    <td className="px-6 py-4">{cliente.phone_number || '-'}</td>
+                                    <td className="px-6 py-4">{cliente.email || '-'}</td>
+                                    <td className="px-6 py-4">{cliente.birthday ? new Date(cliente.birthday + 'T00:00:00').toLocaleDateString('es-AR') : '-'}</td>
+                                    <td className="px-6 py-4">
+                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${cliente.is_active ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                            {cliente.is_active ? 'Activo' : 'Inactivo'}
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4 flex gap-2">
+                                        <Button onClick={() => abrirModalEditar(cliente)} variant="secondary" className="p-2 h-9 w-9"><Edit size={16} /></Button>
+                                        <Button onClick={() => borrarCliente(cliente)} variant="danger" className="p-2 h-9 w-9"><Trash2 size={16} /></Button>
+                                    </td>
+                                </tr>
+                            )}
+                        />
+                        {PaginacionUI}
+                    </>
+                ) : (
+                    <div className="text-center py-16 px-6 bg-white rounded-lg shadow">
+                        <h3 className="text-lg font-semibold text-gray-700">No se encontraron clientes</h3>
+                        <p className="text-gray-500 mt-1">Intenta ajustar los términos de tu búsqueda o crea un nuevo cliente.</p>
+                    </div>
+                )
             )}
             
             <Modal isOpen={modalAbierto} onClose={() => setModalAbierto(false)} title={clienteEditando?.id ? 'Editar Cliente' : 'Nuevo Cliente'}>
