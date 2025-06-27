@@ -1,45 +1,13 @@
 import React, { useState, useContext } from 'react';
-import { Eye, XCircle } from 'lucide-react';
 import { ContextoAuth } from '../../context/AuthContext';
-import { Button, Modal, Table } from '../../components/ui/ComponentesUI';
+import { Modal, Button } from '../../components/ui/ComponentesUI';
 import { useServerSidePagination } from '../../hooks/useServerSidePagination';
 import { toast } from 'sonner';
+import FiltrosVentas from './FiltrosVentas';
+import TablaVentas from './TablaVentas';
 
 const API_URL = 'http://127.0.0.1:8000/api';
 
-// --- COMPONENTE DE FILTROS ---
-const FiltrosVentas = ({ setFiltros, filtros, resetFiltros }) => {
-    const handleInputChange = (e) => {
-        const { name, value } = e.target;
-        // Si el valor de estado es "Todos", se envía un string vacío para no filtrar
-        const finalValue = name === 'status' && value === 'Todos' ? '' : value;
-        setFiltros(prev => ({ ...prev, [name]: finalValue }));
-    };
-    
-    return (
-        <div className="flex flex-wrap items-end gap-4 mb-4 p-4 bg-gray-50 rounded-lg">
-            <div>
-                <label htmlFor="date_time__date__gte" className="block text-sm font-medium text-gray-700">Desde</label>
-                <input id="date_time__date__gte" type="date" name="date_time__date__gte" value={filtros.date_time__date__gte || ''} onChange={handleInputChange} className="mt-1 p-2 border rounded-lg w-full"/>
-            </div>
-            <div>
-                <label htmlFor="date_time__date__lte" className="block text-sm font-medium text-gray-700">Hasta</label>
-                <input id="date_time__date__lte" type="date" name="date_time__date__lte" value={filtros.date_time__date__lte || ''} onChange={handleInputChange} className="mt-1 p-2 border rounded-lg w-full"/>
-            </div>
-            <div>
-                <label htmlFor="status" className="block text-sm font-medium text-gray-700">Estado</label>
-                <select id="status" name="status" value={filtros.status || 'Todos'} onChange={handleInputChange} className="mt-1 p-2 border rounded-lg w-full">
-                    <option value="Todos">Todos</option>
-                    <option value="Completada">Completada</option>
-                    <option value="Cancelada">Cancelada</option>
-                </select>
-            </div>
-            <Button onClick={resetFiltros} variant="secondary">Limpiar Filtros</Button>
-        </div>
-    );
-};
-
-// --- COMPONENTE PRINCIPAL ---
 const GestionVentas = () => {
     const [ventaSeleccionada, setVentaSeleccionada] = useState(null);
     const { tokensAuth } = useContext(ContextoAuth);
@@ -48,7 +16,7 @@ const GestionVentas = () => {
         datosPaginados, 
         loading, 
         error, 
-        FiltrosUI, 
+        FiltrosUI, // Ahora es el componente <FiltrosVentas />
         PaginacionUI, 
         refetch 
     } = useServerSidePagination({
@@ -59,7 +27,7 @@ const GestionVentas = () => {
         initialFilters: { date_time__date__gte: '', date_time__date__lte: '', status: '' }
     });
 
-    const cancelarVenta = async (idVenta) => {
+    const cancelarVenta = (idVenta) => {
         const ejecutarCancelacion = () => {
             const promesa = fetch(`${API_URL}/sales/${idVenta}/cancel/`, {
                 method: 'PATCH',
@@ -167,35 +135,10 @@ const GestionVentas = () => {
             {!loading && !error && (
                 datosPaginados.length > 0 ? (
                     <>
-                        <Table
-                            headers={[
-                                { title: 'ID' }, { title: 'Fecha' }, { title: 'Usuario' },
-                                { title: 'Items' }, { title: 'Total' }, { title: 'Estado' },
-                                { title: 'Acciones' }
-                            ]}
-                            data={datosPaginados}
-                            renderRow={(venta) => (
-                                <tr key={venta.id} className="bg-white border-b hover:bg-gray-50">
-                                    <td className="px-6 py-4">#{venta.id}</td>
-                                    <td className="px-6 py-4">{new Date(venta.date_time).toLocaleString('es-AR')}</td>
-                                    <td className="px-6 py-4">{venta.user}</td>
-                                    <td className="px-6 py-4">{venta.details.length}</td>
-                                    <td className="px-6 py-4 font-bold">${parseFloat(venta.final_amount).toFixed(2)}</td>
-                                    <td className="px-6 py-4">
-                                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                                            venta.status === 'Completada' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                                        }`}>
-                                            {venta.status}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 flex gap-2">
-                                        <Button onClick={() => setVentaSeleccionada(venta)} variant="secondary" className="p-2 h-9 w-9"><Eye size={16} /></Button>
-                                        {venta.status === 'Completada' && (
-                                            <Button onClick={() => cancelarVenta(venta.id)} variant="danger" className="p-2 h-9 w-9" title="Cancelar Venta"><XCircle size={16} /></Button>
-                                        )}
-                                    </td>
-                                </tr>
-                            )}
+                        <TablaVentas 
+                            sales={datosPaginados} 
+                            onSelectSale={setVentaSeleccionada} 
+                            onCancelSale={cancelarVenta} 
                         />
                         {PaginacionUI}
                     </>

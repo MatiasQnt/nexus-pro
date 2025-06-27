@@ -193,11 +193,9 @@ const ReportesYEstadisticas = () => {
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-lg font-semibold text-gray-700 flex items-center"><BarChart3 className="mr-2"/>Ventas por Período</h3>
                             <div className="flex gap-2">
-                                {/* --- INICIO DE CAMBIOS EN FRONTEND --- */}
                                 <Button onClick={() => setPeriodoVentas('daily')} variant={periodoVentas === 'daily' ? 'primary' : 'secondary'} size="sm">Diario</Button>
                                 <Button onClick={() => setPeriodoVentas('weekly')} variant={periodoVentas === 'weekly' ? 'primary' : 'secondary'} size="sm">Semanal</Button>
                                 <Button onClick={() => setPeriodoVentas('monthly')} variant={periodoVentas === 'monthly' ? 'primary' : 'secondary'} size="sm">Mensual</Button>
-                                {/* --- FIN DE CAMBIOS EN FRONTEND --- */}
                             </div>
                         </div>
                          <ResponsiveContainer width="100%" height={300}>

@@ -66,7 +66,6 @@ def get_dolar_cotizaciones(request):
         logger.error(f"Error inesperado en la vista de cotizaciones: {e}")
         return JsonResponse({'error': 'Ocurrió un error interno en el servidor'}, status=500)
 
-
 class MyTokenObtainPairView(TokenObtainPairView):
     serializer_class = MyTokenObtainPairSerializer
 
@@ -150,16 +149,11 @@ class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all().order_by('name')
     serializer_class = CategorySerializer
 
-    # --- LÍNEAS AÑADIDAS ---
-    # Habilitamos los mismos backends de filtrado que en Productos
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     
-    # Le decimos que el campo 'search' debe buscar en el campo 'name' del modelo
     search_fields = ['name']
     
-    # Opcional: Permitimos ordenar por nombre
     ordering_fields = ['name']
-    # --- FIN DE LÍNEAS AÑADIDAS ---
 
     def destroy(self, request, *args, **kwargs):
         category = self.get_object()
@@ -236,6 +230,12 @@ class GroupViewSet(viewsets.ModelViewSet):
 
 class SaleViewSet(viewsets.ModelViewSet):
     queryset = Sale.objects.all().order_by('-date_time')
+
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter] 
+    filterset_fields = {
+        'date_time': ['date__gte', 'date__lte'], # Permite filtrar por la parte de la fecha del campo date_time
+        'status': ['exact'], # Permite filtrar por el estado exacto (Completada, Cancelada)
+    }
 
     def get_serializer_class(self):
         return SaleWriteSerializer if self.action == 'create' else SaleReadSerializer
